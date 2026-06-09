@@ -255,6 +255,21 @@ get_random_axes(bound::UnitCube; rng::AbstractRNG=Random.default_rng()) =
 
 scale_to_logvol!(bound::UnitCube, logvol::Real) = bound
 
+function update!(
+    bound::UnitCube,
+    points::AbstractMatrix{<:Real};
+    rng::AbstractRNG=Random.default_rng(),
+    bootstrap::Integer=0,
+    mc_integrate::Bool=false,
+)
+    size(points, 2) == bound.ndim || throw(
+        DimensionMismatch(
+            "points second dimension $(size(points, 2)) != ndim $(bound.ndim)"
+        ),
+    )
+    return bound
+end
+
 """
     randsphere(n; rng=Random.default_rng())
 
@@ -650,6 +665,36 @@ function bounding_ellipsoids(points::AbstractMatrix{<:Real})
 end
 
 _bounding_ellipsoids(points::AbstractMatrix{<:Real}, ell::Ellipsoid; scale=nothing) = [ell]
+
+function update!(
+    multi::MultiEllipsoid,
+    points::AbstractMatrix{<:Real};
+    rng::AbstractRNG=Random.default_rng(),
+    bootstrap::Integer=0,
+    mc_integrate::Bool=false,
+)
+    bootstrap == 0 || throw(
+        ArgumentError(
+            "multi-ellipsoid bootstrap expansion is implemented in a later Stage 2 refinement",
+        ),
+    )
+    new_multi = bounding_ellipsoids(points)
+    multi.ndim = new_multi.ndim
+    multi.ells = new_multi.ells
+    multi.nells = new_multi.nells
+    multi.ctrs = new_multi.ctrs
+    multi.covs = new_multi.covs
+    multi.ams = new_multi.ams
+    multi.logvol_ells = new_multi.logvol_ells
+    multi.logvol = new_multi.logvol
+    multi.funit = if mc_integrate
+        monte_carlo_logvol(multi; rng, return_overlap=true)[2]
+    else
+        multi.funit
+    end
+    multi.need_centers = new_multi.need_centers
+    return multi
+end
 
 function scale_to_logvol!(bound::Union{RadFriends, SupFriends}, logvol::Real)
     target = Float64(logvol)

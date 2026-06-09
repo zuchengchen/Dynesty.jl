@@ -29,6 +29,8 @@ struct RestoredSampler{L, P}
     backend_metadata::Dict{Symbol, Any}
 end
 
+function sampler_snapshot end
+
 function _require_extension(
     path::AbstractString, extension::AbstractString, kind::AbstractString
 )
@@ -168,7 +170,12 @@ function save_sampler(
     skip_unserializable::Bool=false,
 )
     _require_extension(path, ".jls", "sampler checkpoint")
-    state, skipped = _sanitize_state(sampler; skip_unserializable)
+    state_source = if hasmethod(sampler_snapshot, Tuple{typeof(sampler)})
+        sampler_snapshot(sampler)
+    else
+        sampler
+    end
+    state, skipped = _sanitize_state(state_source; skip_unserializable)
     merged_metadata = _base_metadata(metadata)
     merged_metadata[:format_version] = CHECKPOINT_FORMAT_VERSION
     merged_metadata[:skipped_user_state] = skipped
@@ -215,11 +222,16 @@ function restore_sampler(
             "unsupported sampler checkpoint format version $(checkpoint.metadata[:format_version])",
         ),
     )
-    return RestoredSampler(
-        checkpoint.state,
-        loglikelihood,
-        prior_transform,
-        checkpoint.metadata,
-        checkpoint.backend_metadata,
-    )
+    if checkpoint.state isa AbstractDict &&
+        get(checkpoint.state, :type, nothing) === :NestedSampler
+        return _restore_nested_sampler(checkpoint.state, loglikelihood, prior_transform)
+    else
+        return RestoredSampler(
+            checkpoint.state,
+            loglikelihood,
+            prior_transform,
+            checkpoint.metadata,
+            checkpoint.backend_metadata,
+        )
+    end
 end

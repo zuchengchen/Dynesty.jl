@@ -51,3 +51,8 @@ default tests read JSON files in `test/reference/python/fixtures/`.
 Stage 4 internal samplers are tested by invariants and deterministic Julia
 seeds rather than Python same-seed fixtures. The migration does not require
 cross-language trajectory equality for random proposal kernels.
+
+Stage 5 static sampler tests follow the same randomness policy. They cover
+factory defaults, live-point initialization, a Gaussian static run, final live
+point handling, blob storage, bound updates, 1-based periodic/reflective
+settings, and `.jls` checkpoint restore using deterministic Julia seeds.

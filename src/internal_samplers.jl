@@ -18,6 +18,7 @@ struct SamplerReturn
     u::Vector{Float64}
     v::Vector{Float64}
     logl::Float64
+    blob::Any
     ncalls::Int
     evaluation_history::Vector{EvaluationHistoryItem}
     tuning_info::Dict{Symbol, Any}
@@ -159,11 +160,17 @@ function _record_eval!(history::Vector{EvaluationHistoryItem}, u, v, logl)
     return history
 end
 
+_float_vector(value) = Float64.(vec(collect(value)))
+
 function _eval_point(prior_transform, loglikelihood, u)
     v_raw = prior_transform(Vector{Float64}(u))
-    v = Vector{Float64}(v_raw)
+    v = _float_vector(v_raw)
     logl_out = LoglOutput(loglikelihood(v))
-    return v, logl_out.logl
+    if isnan(logl_out.logl) || logl_out.logl == Inf
+        throw(ArgumentError("The log-likelihood of a sampled point is invalid."))
+    end
+    blob = logl_out.has_blob ? logl_out.blob : nothing
+    return v, logl_out.logl, blob
 end
 
 function _sampler_argument(
@@ -205,7 +212,7 @@ function sample(
     history = EvaluationHistoryItem[]
     while true
         u = rand(rng, sampler.ndim)
-        v, logl = _eval_point(prior_transform, loglikelihood, u)
+        v, logl, blob = _eval_point(prior_transform, loglikelihood, u)
         ncalls += 1
         _record_eval!(history, u, v, logl)
         if logl > loglstar
@@ -213,6 +220,7 @@ function sample(
                 u,
                 v,
                 logl,
+                blob,
                 ncalls,
                 history,
                 Dict{Symbol, Any}(),
@@ -253,7 +261,7 @@ function sample(
         else
             vcat(Vector{Float64}(u_cluster), rand(rng, ndim_i - n_cluster_i))
         end
-        v, logl = _eval_point(prior_transform, loglikelihood, u)
+        v, logl, blob = _eval_point(prior_transform, loglikelihood, u)
         ncalls += 1
         _record_eval!(history, u, v, logl)
         if logl > loglstar
@@ -261,6 +269,7 @@ function sample(
                 u,
                 v,
                 logl,
+                blob,
                 ncalls,
                 history,
                 Dict{Symbol, Any}(),
@@ -337,6 +346,7 @@ function generic_random_walk(
     n_reject = 0
     ncalls = 0
     v_current = nothing
+    blob_current = nothing
     logl_current = -Inf
     while ncalls < walks
         u_prop, fail = propose_ball_point(
@@ -355,12 +365,13 @@ function generic_random_walk(
             ncalls += 1
             continue
         end
-        v_prop, logl_prop = _eval_point(prior_transform, loglikelihood, u_prop)
+        v_prop, logl_prop, blob_prop = _eval_point(prior_transform, loglikelihood, u_prop)
         ncalls += 1
         _record_eval!(history, u_prop, v_prop, logl_prop)
         if logl_prop > loglstar
             u_current = u_prop
             v_current = v_prop
+            blob_current = blob_prop
             logl_current = logl_prop
             n_accept += 1
         else
@@ -368,12 +379,15 @@ function generic_random_walk(
         end
     end
     if n_accept == 0
-        v_current, logl_current = _eval_point(prior_transform, loglikelihood, u_current)
+        v_current, logl_current, blob_current = _eval_point(
+            prior_transform, loglikelihood, u_current
+        )
     end
     return SamplerReturn(
         u_current,
         v_current,
         logl_current,
+        blob_current,
         ncalls,
         history,
         Dict{Symbol, Any}(
@@ -479,13 +493,15 @@ function generic_slice_step(
     function F(x)
         u_new = u0 .+ Float64(x) .* dir
         if unitcheck(u_new; nonbounded=nonperiodic_mask)
-            v_new, logl = _eval_point(prior_transform, loglikelihood, u_new)
+            v_new, logl, blob = _eval_point(prior_transform, loglikelihood, u_new)
             _record_eval!(evaluation_history, u_new, v_new, logl)
         else
+            v_new = Float64[]
             logl = -Inf
+            blob = nothing
         end
         ncalls += 1
-        return u_new, logl
+        return u_new, logl, v_new, blob
     end
 
     nstep_l = -rand0
@@ -538,14 +554,13 @@ function generic_slice_step(
     while true
         nstep_hat = nstep_r - nstep_l
         nstep_prop = nstep_l + rand(rng) * nstep_hat
-        u_prop, logl_prop = F(nstep_prop)
+        u_prop, logl_prop, v_prop, blob_prop = F(nstep_prop)
         n_contract += 1
         if logl_prop > loglstar &&
             (!doubling || _slice_doubling_accept(nstep_prop, F, loglstar, L, R, fL, fR))
-            v_prop, _ = _eval_point(prior_transform, loglikelihood, u_prop)
             return u_prop,
-            v_prop, logl_prop, ncalls, n_expand, n_contract,
-            expansion_warning
+            v_prop, logl_prop, ncalls, n_expand, n_contract, expansion_warning,
+            blob_prop
         elseif nstep_prop < 0
             nstep_l = nstep_prop
         elseif nstep_prop > 0
@@ -581,6 +596,7 @@ function sample(
     history = EvaluationHistoryItem[]
     u_current = copy(args.u)
     v_prop = Float64[]
+    blob_prop = nothing
     logl_prop = -Inf
     ncalls = 0
     n_expand = 0
@@ -603,6 +619,7 @@ function sample(
                 rng,
             )
             u_current, v_prop, logl_prop = step[1], step[2], step[3]
+            blob_prop = step[8]
             ncalls += step[4]
             n_expand += step[5]
             n_contract += step[6]
@@ -621,6 +638,7 @@ function sample(
         u_current,
         v_prop,
         logl_prop,
+        blob_prop,
         ncalls,
         history,
         tuning_info,
@@ -648,6 +666,7 @@ function sample(
     history = EvaluationHistoryItem[]
     u_current = copy(args.u)
     v_prop = Float64[]
+    blob_prop = nothing
     logl_prop = -Inf
     ncalls = 0
     n_expand = 0
@@ -669,6 +688,7 @@ function sample(
             rng,
         )
         u_current, v_prop, logl_prop = step[1], step[2], step[3]
+        blob_prop = step[8]
         ncalls += step[4]
         n_expand += step[5]
         n_contract += step[6]
@@ -686,6 +706,7 @@ function sample(
         u_current,
         v_prop,
         logl_prop,
+        blob_prop,
         ncalls,
         history,
         tuning_info,

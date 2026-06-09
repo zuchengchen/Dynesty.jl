@@ -12,7 +12,7 @@ Statuses:
 
 | Python symbol | Julia symbol | Grade | Status | Julia test file | Python fixture file | Notes |
 | --- | --- | --- | --- | --- | --- | --- |
-| `dynesty.NestedSampler` | `NestedSampler` | A | planned | `test/test_static_sampler.jl` | planned | Public static sampler API. |
+| `dynesty.NestedSampler` | `NestedSampler` | A | implemented | `test/test_static_sampler.jl` | statistical/invariant | Public static sampler API with Julia-native mutating `run_nested!`, result extraction, blobs, bounds, and checkpoint restore. |
 | `dynesty.DynamicNestedSampler` | `DynamicNestedSampler` | A | planned | `test/test_dynamic_sampler.jl` | planned | Public dynamic sampler API. |
 | `dynesty.bounding.Bound` | `AbstractBound` | B | planned | `test/test_bounding_unitcube_ellipsoid.jl` | planned | Julia abstract interface replacement. |
 | `dynesty.bounding.UnitCube` | `UnitCube` | A | implemented | `test/test_bounding_unitcube_ellipsoid.jl` | `test/reference/python/fixtures/bounding_core.json` | Unit-cube bound. |
@@ -39,12 +39,12 @@ Statuses:
 | `dynesty.dynamicsampler._configure_batch_sampler` | `_configure_batch_sampler` | B | planned | `test/test_dynamic_sampler.jl` | planned | Internal dynamic configuration. |
 | `dynesty.dynamicsampler.DynamicSampler` | `DynamicSampler` | A | planned | `test/test_dynamic_sampler.jl` | planned | Dynamic sampler engine. |
 | `dynesty.dynesty._get_citations` | `get_citations` | C | implemented | `test/runtests.jl` | not needed | Julia helper includes required citation set. |
-| `dynesty.dynesty._get_internal_sampler` | `_get_internal_sampler` | B | planned | `test/test_static_sampler.jl` | planned | Sampler factory. |
-| `dynesty.dynesty._get_enlarge_bootstrap` | `_get_enlarge_bootstrap` | B | planned | `test/test_static_sampler.jl` | planned | Bound defaults. |
-| `dynesty.dynesty._check_first_update` | `_check_first_update` | B | planned | `test/test_static_sampler.jl` | planned | First-update validation. |
-| `dynesty.dynesty._get_update_interval_ratio` | `_get_update_interval_ratio` | B | planned | `test/test_static_sampler.jl` | planned | Bound update heuristic. |
+| `dynesty.dynesty._get_internal_sampler` | `_get_internal_sampler` | B | implemented | `test/test_static_sampler.jl` | not needed | Sampler factory; accepts Julia `Symbol`s and Python strings with 1-based dimension indices. |
+| `dynesty.dynesty._get_enlarge_bootstrap` | `_get_enlarge_bootstrap` | B | implemented | `test/test_static_sampler.jl` | not needed | Bound defaults; automatic uniform-bootstrap default is represented by deterministic enlargement until ellipsoid bootstrap helpers are migrated. |
+| `dynesty.dynesty._check_first_update` | `_check_first_update` | B | implemented | `test/test_static_sampler.jl` | not needed | First-update validation. |
+| `dynesty.dynesty._get_update_interval_ratio` | `_get_update_interval_ratio` | B | implemented | `test/test_static_sampler.jl` | not needed | Bound update heuristic. |
 | `dynesty.dynesty._assemble_sampler_docstring` | documentation generation | C | replacement | docs build | not needed | Julia docs will be written directly. |
-| `dynesty.dynesty._common_sampler_init` | `_common_sampler_init` | B | planned | `test/test_static_sampler.jl` | planned | Shared sampler initialization. |
+| `dynesty.dynesty._common_sampler_init` | `NestedSampler` constructor helpers | B | replacement | `test/test_static_sampler.jl` | not needed | Julia constructor composes wrappers, RNG, bounds, internal sampler, live-point initialization, and update defaults directly. |
 | `dynesty.dynesty._function_wrapper` | callable wrappers | C | replacement | `test/test_static_sampler.jl` | not needed | Julia closures/callable objects replace arg/kwarg wrappers. |
 | `dynesty.internal_samplers.InternalSampler` | `AbstractInternalSampler` | B | implemented | `test/test_internal_samplers.jl` | not needed | Julia abstract interface replacement. |
 | `dynesty.internal_samplers.UniformBoundSampler` | `UniformBoundSampler` | A | implemented | `test/test_internal_samplers.jl` | statistical/invariant | Bound rejection sampler. |
@@ -73,9 +73,9 @@ Statuses:
 | `dynesty.pool.loglike_cache` | backend task closure | C | replacement | `test/test_parallel.jl` | not needed | Julia closures replace global cache. |
 | `dynesty.pool.prior_transform_cache` | backend task closure | C | replacement | `test/test_parallel.jl` | not needed | Julia closures replace global cache. |
 | `dynesty.pool.Pool` | `SerialMapBackend` / `ThreadedMapBackend` / `DistributedMapBackend` | A | implemented | `test/test_parallel.jl` | not needed | Ordered Julia-native map replacement with queue controls; Python Pool shape intentionally replaced. |
-| `dynesty.sampler._get_bound` | `_get_bound` | B | planned | `test/test_static_sampler.jl` | planned | Bound factory. |
-| `dynesty.sampler._initialize_live_points` | `_initialize_live_points` | A | planned | `test/test_static_sampler.jl` | planned | Live point initialization. |
-| `dynesty.sampler.Sampler` | `NestedSampler` internals | A | planned | `test/test_static_sampler.jl` | planned | Static sampler engine. |
+| `dynesty.sampler._get_bound` | `_get_bound` | B | implemented | `test/test_static_sampler.jl` | not needed | Bound factory. |
+| `dynesty.sampler._initialize_live_points` | `_initialize_live_points` | A | implemented | `test/test_static_sampler.jl` | statistical/invariant | Live point initialization with Real, tuple/blob, and `LoglOutput` normalization. |
+| `dynesty.sampler.Sampler` | `NestedSampler` internals | A | implemented | `test/test_static_sampler.jl` | statistical/invariant | Static sampler engine including run loop, final live points, result conversion, bound updates, blobs, and checkpoint restore. |
 | `dynesty.utils.LoglOutput` | `LoglOutput` | A | implemented | `test/test_utils.jl` | `test/reference/python/fixtures/utils_core.json` | Likelihood output with optional blob. |
 | `dynesty.utils.LogLikelihood` | `LogLikelihood` | A | implemented | `test/test_utils.jl` | not needed | Callable wrapper implemented; HDF5 history flushing is extension-backed. |
 | `dynesty.utils.RunRecord` | `RunRecord` | B | implemented | `test/test_results.jl` | not needed | Run accumulation. |
