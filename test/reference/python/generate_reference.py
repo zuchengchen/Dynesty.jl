@@ -14,6 +14,7 @@ import scipy
 
 import dynesty
 from dynesty import utils
+from dynesty import bounding
 
 
 ROOT = Path(__file__).resolve().parents[3]
@@ -80,7 +81,85 @@ def main() -> None:
     }
     (FIXTURES / "utils_core.json").write_text(json.dumps(fixture, indent=2, sort_keys=True) + "\n")
 
+    points = np.array(
+        [
+            [0.10, 0.20],
+            [0.80, 0.20],
+            [0.50, 0.90],
+            [0.30, 0.70],
+            [0.65, 0.55],
+        ]
+    )
+    ell = bounding.bounding_ellipsoid(points)
+    multi = bounding.bounding_ellipsoids(points)
+    scaled = bounding.Ellipsoid(
+        2,
+        ctr=ell.ctr.copy(),
+        cov=ell.cov.copy(),
+        am=ell.am.copy(),
+        axes=ell.axes.copy(),
+    )
+    scaled.scale_to_logvol(ell.logvol + 0.5)
+    rng = np.random.default_rng(12345)
+    rand_sphere = bounding.randsphere(3, rstate=rng)
+    choice_rng = np.random.default_rng(4321)
+    choices = [int(bounding.rand_choice(np.array([0.2, 0.3, 0.5]), choice_rng)) for _ in range(8)]
+    good, improved_cov, improved_am, improved_axes = bounding.improve_covar_mat(
+        np.array([[1.0, 0.999999], [0.999999, 0.999998]])
+    )
+
+    bounding_fixture = {
+        "source": fixture["source"],
+        "points": points.tolist(),
+        "unitcube": {
+            "contains_inside": bool(bounding.UnitCube(2).contains(np.array([0.2, 0.8]))),
+            "contains_edge": bool(bounding.UnitCube(2).contains(np.array([0.0, 0.5]))),
+        },
+        "randsphere": {
+            "seed": 12345,
+            "n": 3,
+            "value": rand_sphere.tolist(),
+        },
+        "rand_choice": {
+            "seed": 4321,
+            "probabilities": [0.2, 0.3, 0.5],
+            "values_python_0_based": choices,
+            "values_julia_1_based": [v + 1 for v in choices],
+        },
+        "improve_covar_mat": {
+            "input": [[1.0, 0.999999], [0.999999, 0.999998]],
+            "good": bool(good),
+            "cov": improved_cov.tolist(),
+            "am": improved_am.tolist(),
+            "axes": improved_axes.tolist(),
+        },
+        "ellipsoid": {
+            "ctr": ell.ctr.tolist(),
+            "cov": ell.cov.tolist(),
+            "am": ell.am.tolist(),
+            "axes": ell.axes.tolist(),
+            "axlens": ell.axlens.tolist(),
+            "logvol": float(ell.logvol),
+            "distances": ell.distance_many(points).tolist(),
+            "contains": [bool(ell.contains(row)) for row in points],
+            "major_axis_endpoints": [x.tolist() for x in ell.major_axis_endpoints()],
+            "scaled_logvol": float(scaled.logvol),
+            "scaled_cov": scaled.cov.tolist(),
+            "scaled_axlens": scaled.axlens.tolist(),
+        },
+        "multi": {
+            "nells": int(multi.nells),
+            "logvol": float(multi.logvol),
+            "logvol_ells": multi.logvol_ells.tolist(),
+            "contains": [bool(multi.contains(row)) for row in points],
+        },
+        "rtol": 1e-10,
+        "atol": 1e-12,
+    }
+    (FIXTURES / "bounding_core.json").write_text(
+        json.dumps(bounding_fixture, indent=2, sort_keys=True) + "\n"
+    )
+
 
 if __name__ == "__main__":
     main()
-

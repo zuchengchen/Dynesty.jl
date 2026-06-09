@@ -22,11 +22,12 @@ LoglOutput(logl::Real) = LoglOutput(Float64(logl), nothing, false)
 LoglOutput(logl::Real, blob) = LoglOutput(Float64(logl), blob, true)
 LoglOutput(value::LoglOutput) = value
 
-LoglOutput(value::Real, blob_flag::Bool) = if blob_flag
-    throw(ArgumentError("blob=true requires likelihood output `(logl, blob)`"))
-else
-    LoglOutput(value)
-end
+LoglOutput(value::Real, blob_flag::Bool) =
+    if blob_flag
+        throw(ArgumentError("blob=true requires likelihood output `(logl, blob)`"))
+    else
+        LoglOutput(value)
+    end
 
 function LoglOutput(value, blob_flag::Bool)
     if blob_flag

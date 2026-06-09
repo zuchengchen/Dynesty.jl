@@ -18,6 +18,12 @@ The generator records:
 - fixture generation timestamp
 - per-fixture tolerances and rationale
 
+Current fixture files:
+
+- `fixtures/utils_core.json`: foundational utilities and evidence integration.
+- `fixtures/bounding_core.json`: UnitCube, Ellipsoid, MultiEllipsoid, and
+  bounding helper cross-checks.
+
 Current source snapshot:
 
 - Source path: `/home/czc/projects/working/dynesty`

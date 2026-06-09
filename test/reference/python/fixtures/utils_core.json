@@ -106,7 +106,7 @@
     "branch": "master",
     "commit": "3ec158de0d2bf12a56230faacd0c987b3d55d550",
     "dynesty_version": "2.1.2",
-    "generated_at": "2026-06-09T19:05:20.980557+00:00",
+    "generated_at": "2026-06-09T19:23:03.147380+00:00",
     "numpy_version": "1.21.5",
     "path": "/home/czc/projects/working/dynesty",
     "python_version": "3.9.18",

@@ -15,19 +15,19 @@ Statuses:
 | `dynesty.NestedSampler` | `NestedSampler` | A | planned | `test/test_static_sampler.jl` | planned | Public static sampler API. |
 | `dynesty.DynamicNestedSampler` | `DynamicNestedSampler` | A | planned | `test/test_dynamic_sampler.jl` | planned | Public dynamic sampler API. |
 | `dynesty.bounding.Bound` | `AbstractBound` | B | planned | `test/test_bounding_unitcube_ellipsoid.jl` | planned | Julia abstract interface replacement. |
-| `dynesty.bounding.UnitCube` | `UnitCube` | A | planned | `test/test_bounding_unitcube_ellipsoid.jl` | planned | Unit-cube bound. |
-| `dynesty.bounding.Ellipsoid` | `Ellipsoid` | A | planned | `test/test_bounding_unitcube_ellipsoid.jl` | planned | Ellipsoid bound. |
-| `dynesty.bounding.MultiEllipsoid` | `MultiEllipsoid` | A | planned | `test/test_bounding_unitcube_ellipsoid.jl` | planned | Multi-ellipsoid bound. |
+| `dynesty.bounding.UnitCube` | `UnitCube` | A | implemented | `test/test_bounding_unitcube_ellipsoid.jl` | `test/reference/python/fixtures/bounding_core.json` | Unit-cube bound. |
+| `dynesty.bounding.Ellipsoid` | `Ellipsoid` | A | implemented | `test/test_bounding_unitcube_ellipsoid.jl` | `test/reference/python/fixtures/bounding_core.json` | Ellipsoid bound. |
+| `dynesty.bounding.MultiEllipsoid` | `MultiEllipsoid` | A | implemented | `test/test_bounding_unitcube_ellipsoid.jl` | `test/reference/python/fixtures/bounding_core.json` | Multi-ellipsoid bound; recursive splitting remains conservative single-ellipsoid in Stage 2. |
 | `dynesty.bounding.RadFriends` | `RadFriends` | A | planned | `test/test_bounding_friends.jl` | planned | RadFriends bound. |
 | `dynesty.bounding.SupFriends` | `SupFriends` | A | planned | `test/test_bounding_friends.jl` | planned | SupFriends bound. |
 | `dynesty.bounding._slogdet_checked` | `_slogdet_checked` | B | planned | `test/test_bounding_unitcube_ellipsoid.jl` | planned | Internal determinant guard. |
-| `dynesty.bounding.logvol_prefactor` | `logvol_prefactor` | A | implemented | `test/test_utils.jl` | planned | Volume helper; Python fixture will be expanded with bounding fixtures in Stage 2. |
-| `dynesty.bounding.randsphere` | `randsphere` | B | planned | `test/test_bounding_unitcube_ellipsoid.jl` | planned | Statistical checks. |
-| `dynesty.bounding.rand_choice` | `rand_choice` | B | planned | `test/test_bounding_unitcube_ellipsoid.jl` | planned | Weighted random choice. |
-| `dynesty.bounding.improve_covar_mat` | `improve_covar_mat` | B | planned | `test/test_bounding_unitcube_ellipsoid.jl` | planned | Covariance conditioning. |
-| `dynesty.bounding.bounding_ellipsoid` | `bounding_ellipsoid` | A | planned | `test/test_bounding_unitcube_ellipsoid.jl` | planned | Deterministic fixture and tolerance checks. |
-| `dynesty.bounding._bounding_ellipsoids` | `_bounding_ellipsoids` | B | planned | `test/test_bounding_unitcube_ellipsoid.jl` | planned | Internal recursive helper. |
-| `dynesty.bounding.bounding_ellipsoids` | `bounding_ellipsoids` | A | planned | `test/test_bounding_unitcube_ellipsoid.jl` | planned | Public multi-bound constructor. |
+| `dynesty.bounding.logvol_prefactor` | `logvol_prefactor` | A | implemented | `test/test_utils.jl` | `test/reference/python/fixtures/bounding_core.json` | Volume helper. |
+| `dynesty.bounding.randsphere` | `randsphere` | B | implemented | `test/test_bounding_unitcube_ellipsoid.jl` | `test/reference/python/fixtures/bounding_core.json` | Statistical checks plus reference fixture metadata. |
+| `dynesty.bounding.rand_choice` | `rand_choice` | B | implemented | `test/test_bounding_unitcube_ellipsoid.jl` | `test/reference/python/fixtures/bounding_core.json` | Weighted random choice; Julia returns 1-based indices. |
+| `dynesty.bounding.improve_covar_mat` | `improve_covar_mat` | B | implemented | `test/test_bounding_unitcube_ellipsoid.jl` | `test/reference/python/fixtures/bounding_core.json` | Covariance conditioning. |
+| `dynesty.bounding.bounding_ellipsoid` | `bounding_ellipsoid` | A | implemented | `test/test_bounding_unitcube_ellipsoid.jl` | `test/reference/python/fixtures/bounding_core.json` | Deterministic fixture and tolerance checks. |
+| `dynesty.bounding._bounding_ellipsoids` | `_bounding_ellipsoids` | B | planned | `test/test_bounding_unitcube_ellipsoid.jl` | planned | Recursive clustering split helper remains for full multi-ellipsoid refinement. |
+| `dynesty.bounding.bounding_ellipsoids` | `bounding_ellipsoids` | A | implemented | `test/test_bounding_unitcube_ellipsoid.jl` | `test/reference/python/fixtures/bounding_core.json` | Public multi-bound constructor; Stage 2 covers single-ellipsoid union. |
 | `dynesty.bounding._bootstrap_points` | `_bootstrap_points` | B | planned | `test/test_bounding_unitcube_ellipsoid.jl` | planned | Internal bootstrap helper. |
 | `dynesty.bounding._ellipsoid_bootstrap_expand` | `_ellipsoid_bootstrap_expand` | B | planned | `test/test_bounding_unitcube_ellipsoid.jl` | planned | Internal bootstrap expansion. |
 | `dynesty.bounding._friends_bootstrap_radius` | `_friends_bootstrap_radius` | B | planned | `test/test_bounding_friends.jl` | planned | Friends radius helper. |
