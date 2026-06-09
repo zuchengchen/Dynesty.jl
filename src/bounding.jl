@@ -99,6 +99,73 @@ mutable struct MultiEllipsoid <: AbstractBound
     need_centers::Bool
 end
 
+mutable struct RadFriends <: AbstractBound
+    ndim::Int
+    cov::Matrix{Float64}
+    am::Matrix{Float64}
+    axes::Matrix{Float64}
+    axes_inv::Matrix{Float64}
+    logvol::Float64
+    funit::Float64
+    ctrs::Matrix{Float64}
+    need_centers::Bool
+end
+
+mutable struct SupFriends <: AbstractBound
+    ndim::Int
+    cov::Matrix{Float64}
+    am::Matrix{Float64}
+    axes::Matrix{Float64}
+    axes_inv::Matrix{Float64}
+    logvol::Float64
+    funit::Float64
+    ctrs::Matrix{Float64}
+    need_centers::Bool
+end
+
+function _pinvh(matrix::AbstractMatrix{<:Real})
+    eig = eigen(Symmetric(Matrix{Float64}(matrix)))
+    vals = Float64.(eig.values)
+    vecs = Matrix{Float64}(eig.vectors)
+    scale = maximum(abs.(vals))
+    tol = eps(Float64) * length(vals) * max(scale, 1.0)
+    invvals = [abs(v) > tol ? inv(v) : 0.0 for v in vals]
+    return vecs * Diagonal(invvals) * transpose(vecs)
+end
+
+function _sqrtm_psd(matrix::AbstractMatrix{<:Real})
+    eig = eigen(Symmetric(Matrix{Float64}(matrix)))
+    vals = max.(Float64.(eig.values), 0.0)
+    vecs = Matrix{Float64}(eig.vectors)
+    return vecs * Diagonal(sqrt.(vals)) * transpose(vecs)
+end
+
+function _friends_logvol(::Type{RadFriends}, ndim::Int, am::AbstractMatrix{<:Real})
+    return logvol_prefactor(ndim) - 0.5 * _slogdet_checked(am)
+end
+
+function _friends_logvol(::Type{SupFriends}, ndim::Int, am::AbstractMatrix{<:Real})
+    return ndim * log(2.0) - 0.5 * _slogdet_checked(am)
+end
+
+function _init_friends(
+    ::Type{T}, ndim::Integer, cov
+) where {T <: Union{RadFriends, SupFriends}}
+    ndim_i = Int(ndim)
+    ndim_i > 0 || throw(ArgumentError("ndim must be positive; got $ndim"))
+    cov_m = isnothing(cov) ? Matrix{Float64}(I, ndim_i, ndim_i) : Matrix{Float64}(cov)
+    size(cov_m) == (ndim_i, ndim_i) ||
+        throw(DimensionMismatch("covariance shape $(size(cov_m)) != ($ndim_i, $ndim_i)"))
+    am = _pinvh(cov_m)
+    axes = _sqrtm_psd(cov_m)
+    axes_inv = _pinvh(axes)
+    logvol = _friends_logvol(T, ndim_i, am)
+    return T(ndim_i, cov_m, am, axes, axes_inv, logvol, 1.0, zeros(0, ndim_i), true)
+end
+
+RadFriends(ndim::Integer; cov=nothing) = _init_friends(RadFriends, ndim, cov)
+SupFriends(ndim::Integer; cov=nothing) = _init_friends(SupFriends, ndim, cov)
+
 function MultiEllipsoid(ndim::Integer; ells=nothing, ctrs=nothing, covs=nothing)
     ndim_i = Int(ndim)
     ndim_i > 0 || throw(ArgumentError("ndim must be positive; got $ndim"))
@@ -166,10 +233,10 @@ function logsumexp(values::AbstractVector{<:Real})
 end
 
 function _slogdet_checked(matrix::AbstractMatrix{<:Real})
-    sign, logabsdet = logabsdet(Matrix{Float64}(matrix))
+    logabsdet_value, sign = logabsdet(Matrix{Float64}(matrix))
     sign > 0 ||
         throw(ArgumentError("covariance matrix has non-positive determinant sign=$sign"))
-    return logabsdet
+    return logabsdet_value
 end
 
 contains(bound::UnitCube, x::AbstractVector{<:Real}) = unitcheck(x)
@@ -583,3 +650,305 @@ function bounding_ellipsoids(points::AbstractMatrix{<:Real})
 end
 
 _bounding_ellipsoids(points::AbstractMatrix{<:Real}, ell::Ellipsoid; scale=nothing) = [ell]
+
+function scale_to_logvol!(bound::Union{RadFriends, SupFriends}, logvol::Real)
+    target = Float64(logvol)
+    f = exp((target - bound.logvol) / bound.ndim)
+    bound.cov .*= f^2
+    bound.am ./= f^2
+    bound.axes .*= f
+    bound.axes_inv ./= f
+    bound.logvol = target
+    return bound
+end
+
+function _friends_metric(bound::RadFriends, transformed_delta::AbstractVector{<:Real})
+    return norm(transformed_delta)
+end
+
+function _friends_metric(bound::SupFriends, transformed_delta::AbstractVector{<:Real})
+    return maximum(abs.(transformed_delta))
+end
+
+function _friends_delta_transformed(
+    bound::Union{RadFriends, SupFriends}, x::AbstractVector{<:Real}
+)
+    isempty(bound.ctrs) && return zeros(Float64, 0, bound.ndim)
+    length(x) == bound.ndim ||
+        throw(DimensionMismatch("point length $(length(x)) != ndim $(bound.ndim)"))
+    return (bound.ctrs .- reshape(Float64.(x), 1, bound.ndim)) * bound.axes_inv
+end
+
+function within(bound::Union{RadFriends, SupFriends}, x::AbstractVector{<:Real})
+    transformed = _friends_delta_transformed(bound, x)
+    mask = Bool[
+        _friends_metric(bound, collect(view(transformed, i, :))) <= 1.0 for
+        i in axes(transformed, 1)
+    ]
+    return findall(mask)
+end
+
+overlap(bound::Union{RadFriends, SupFriends}, x::AbstractVector{<:Real}) =
+    length(within(bound, x))
+
+function contains(bound::Union{RadFriends, SupFriends}, x::AbstractVector{<:Real})
+    return overlap(bound, x) > 0
+end
+
+function _friends_sample_delta(bound::RadFriends, rng::AbstractRNG)
+    return transpose(randsphere(bound.ndim; rng)) * bound.axes |> vec
+end
+
+function _friends_sample_delta(bound::SupFriends, rng::AbstractRNG)
+    ds = rand(rng, bound.ndim) .* 2 .- 1
+    return transpose(ds) * bound.axes |> vec
+end
+
+function sample(
+    bound::Union{RadFriends, SupFriends};
+    rng::AbstractRNG=Random.default_rng(),
+    return_q::Bool=false,
+)
+    nctrs = size(bound.ctrs, 1)
+    nctrs > 0 || throw(ArgumentError("friends bound has no centers; call update! first"))
+    while true
+        dx = _friends_sample_delta(bound, rng)
+        if nctrs == 1
+            x = vec(bound.ctrs[1, :]) .+ dx
+            q = 1
+        else
+            idx = rand(rng, 1:nctrs)
+            x = vec(bound.ctrs[idx, :]) .+ dx
+            q = overlap(bound, x)
+        end
+        if q == 1 || return_q || rand(rng) < 1.0 / q
+            return return_q ? (x, q) : x
+        end
+    end
+end
+
+function samples(
+    bound::Union{RadFriends, SupFriends},
+    nsamples::Integer;
+    rng::AbstractRNG=Random.default_rng(),
+)
+    nsamples >= 0 || throw(ArgumentError("nsamples must be nonnegative; got $nsamples"))
+    out = Matrix{Float64}(undef, Int(nsamples), bound.ndim)
+    for i in 1:Int(nsamples)
+        out[i, :] .= sample(bound; rng)
+    end
+    return out
+end
+
+function monte_carlo_logvol(
+    bound::Union{RadFriends, SupFriends};
+    ndraws::Integer=10_000,
+    rng::AbstractRNG=Random.default_rng(),
+    return_overlap::Bool=true,
+)
+    ndraws > 0 || throw(ArgumentError("ndraws must be positive; got $ndraws"))
+    nctrs = size(bound.ctrs, 1)
+    nctrs > 0 || throw(ArgumentError("friends bound has no centers; call update! first"))
+    qsum = 0.0
+    qin = 0.0
+    for _ in 1:Int(ndraws)
+        x, q = sample(bound; rng, return_q=true)
+        weight = 1.0 / q
+        qsum += weight
+        qin += weight * unitcheck(x)
+    end
+    logvol = log(qsum / ndraws * nctrs) + bound.logvol
+    if return_overlap
+        return logvol, qin / qsum
+    else
+        return logvol
+    end
+end
+
+function _covariance_from_all_points(points::AbstractMatrix{<:Real})
+    return _mle_cov(points)
+end
+
+function _component_labels_from_threshold(
+    points::AbstractMatrix{<:Real}, am::AbstractMatrix{<:Real}
+)
+    npoints = size(points, 1)
+    parent = collect(1:npoints)
+    function find_root(i)
+        while parent[i] != i
+            parent[i] = parent[parent[i]]
+            i = parent[i]
+        end
+        return i
+    end
+    function union_roots!(i, j)
+        ri = find_root(i)
+        rj = find_root(j)
+        ri == rj && return nothing
+        parent[rj] = ri
+    end
+    for i in 1:npoints
+        for j in (i + 1):npoints
+            delta = vec(points[i, :] .- points[j, :])
+            if sqrt(dot(delta, am * delta)) <= 1.0
+                union_roots!(i, j)
+            end
+        end
+    end
+    roots = [find_root(i) for i in 1:npoints]
+    unique_roots = unique(roots)
+    label_map = Dict(root => label for (label, root) in enumerate(unique_roots))
+    return [label_map[root] for root in roots]
+end
+
+function _covariance_from_clusters(
+    bound::Union{RadFriends, SupFriends}, points::AbstractMatrix{<:Real}
+)
+    pts = Matrix{Float64}(points)
+    npoints, ndim = size(pts)
+    npoints <= 2 && return _covariance_from_all_points(pts)
+    labels = _component_labels_from_threshold(pts, bound.am)
+    nclusters = maximum(labels)
+    if nclusters == 1
+        return _covariance_from_all_points(pts)
+    end
+    overlapped = similar(pts)
+    cursor = 1
+    for label in unique(labels)
+        idxs = findall(==(label), labels)
+        group = pts[idxs, :]
+        group_mean = vec(mean(group; dims=1))
+        next_cursor = cursor + length(idxs) - 1
+        overlapped[cursor:next_cursor, :] .= group .- reshape(group_mean, 1, ndim)
+        cursor = next_cursor + 1
+    end
+    return _covariance_from_all_points(overlapped)
+end
+
+function _bootstrap_points(points::AbstractMatrix{<:Real}, rng::AbstractRNG)
+    pts = Matrix{Float64}(points)
+    npoints = size(pts, 1)
+    npoints >= 3 || throw(ArgumentError("at least three points are required for bootstrap"))
+    idxs = rand(rng, 1:npoints, npoints)
+    selected = falses(npoints)
+    selected[unique(idxs)] .= true
+    n_in = count(selected)
+    if n_in < 2
+        selected[1:2] .= true
+    elseif n_in > npoints - 1
+        selected[1] = false
+    end
+    return pts[selected, :], pts[.!selected, :]
+end
+
+function _point_distance(
+    a::AbstractVector{<:Real}, b::AbstractVector{<:Real}, ftype::Symbol
+)
+    delta = Float64.(a) .- Float64.(b)
+    if ftype === :balls
+        return norm(delta)
+    elseif ftype === :cubes
+        return maximum(abs.(delta))
+    else
+        throw(
+            ArgumentError("unknown friends type $(repr(ftype)); expected :balls or :cubes")
+        )
+    end
+end
+
+function _nearest_distances(
+    points_a::AbstractMatrix{<:Real}, points_b::AbstractMatrix{<:Real}, ftype::Symbol
+)
+    out = Vector{Float64}(undef, size(points_a, 1))
+    for i in axes(points_a, 1)
+        mindist = Inf
+        ai = vec(points_a[i, :])
+        for j in axes(points_b, 1)
+            dist = _point_distance(ai, vec(points_b[j, :]), ftype)
+            mindist = min(mindist, dist)
+        end
+        out[i] = mindist
+    end
+    return out
+end
+
+function _friends_bootstrap_radius(
+    points::AbstractMatrix{<:Real}, ftype::Symbol; rng::AbstractRNG=Random.default_rng()
+)
+    points_in, points_out = _bootstrap_points(points, rng)
+    dists = _nearest_distances(points_out, points_in, ftype)
+    return maximum(dists)
+end
+
+function _friends_leaveoneout_radius(points::AbstractMatrix{<:Real}, ftype::Symbol)
+    pts = Matrix{Float64}(points)
+    npoints = size(pts, 1)
+    npoints >= 2 ||
+        throw(ArgumentError("at least two points are required for leave-one-out radius"))
+    out = Vector{Float64}(undef, npoints)
+    for i in 1:npoints
+        mindist = Inf
+        pi = vec(pts[i, :])
+        for j in 1:npoints
+            i == j && continue
+            dist = _point_distance(pi, vec(pts[j, :]), ftype)
+            mindist = min(mindist, dist)
+        end
+        out[i] = mindist
+    end
+    return out
+end
+
+function _friends_type(::RadFriends)
+    return :balls
+end
+
+function _friends_type(::SupFriends)
+    return :cubes
+end
+
+function update!(
+    bound::Union{RadFriends, SupFriends},
+    points::AbstractMatrix{<:Real};
+    rng::AbstractRNG=Random.default_rng(),
+    bootstrap::Integer=0,
+    mc_integrate::Bool=false,
+    use_clustering::Bool=true,
+)
+    pts = Matrix{Float64}(points)
+    size(pts, 2) == bound.ndim || throw(
+        DimensionMismatch("points second dimension $(size(pts, 2)) != ndim $(bound.ndim)"),
+    )
+    size(pts, 1) >= 2 || throw(ArgumentError("at least two points are required"))
+    bound.cov = if use_clustering
+        _covariance_from_clusters(bound, pts)
+    else
+        _covariance_from_all_points(pts)
+    end
+    bound.am = _pinvh(bound.cov)
+    bound.axes = _sqrtm_psd(bound.cov)
+    bound.axes_inv = _pinvh(bound.axes)
+
+    points_t = pts * bound.axes_inv
+    ftype = _friends_type(bound)
+    radius = if bootstrap == 0
+        maximum(_friends_leaveoneout_radius(points_t, ftype))
+    else
+        maximum(_friends_bootstrap_radius(points_t, ftype; rng) for _ in 1:Int(bootstrap))
+    end
+    radius > 0 || (radius = sqrt(eps(Float64)))
+    bound.cov .*= radius^2
+    bound.am ./= radius^2
+    bound.axes .*= radius
+    bound.axes_inv ./= radius
+    bound.ctrs = pts
+    bound.logvol = _friends_logvol(typeof(bound), bound.ndim, bound.am)
+    if mc_integrate
+        _, bound.funit = monte_carlo_logvol(bound; rng, return_overlap=true)
+    end
+    return bound
+end
+
+get_random_axes(
+    bound::Union{RadFriends, SupFriends}; rng::AbstractRNG=Random.default_rng()
+) = bound.axes

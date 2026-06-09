@@ -41,6 +41,28 @@ using Test
         1e-12
 end
 
+@testset "Python friends fixtures" begin
+    fixture_path = joinpath(
+        @__DIR__, "reference", "python", "fixtures", "friends_core.json"
+    )
+    fixture = JSON3.read(read(fixture_path, String))
+    points = reduce(
+        vcat, [reshape(Vector{Float64}(row), 1, :) for row in fixture["points"]]
+    )
+
+    rad = RadFriends(2)
+    Dynesty.update!(rad, points; use_clustering=false)
+    @test rad.logvol ≈ fixture["radfriends"]["logvol"] rtol = 1e-8 atol = 1e-10
+    @test Dynesty.within(rad, vec(points[1, :])) ==
+        Vector{Int}(fixture["radfriends"]["within_first_julia_1_based"])
+
+    sup = SupFriends(2)
+    Dynesty.update!(sup, points; use_clustering=false)
+    @test sup.logvol ≈ fixture["supfriends"]["logvol"] rtol = 1e-8 atol = 1e-10
+    @test Dynesty.within(sup, vec(points[1, :])) ==
+        Vector{Int}(fixture["supfriends"]["within_first_julia_1_based"])
+end
+
 @testset "Python bounding fixtures" begin
     fixture_path = joinpath(
         @__DIR__, "reference", "python", "fixtures", "bounding_core.json"

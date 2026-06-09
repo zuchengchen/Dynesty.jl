@@ -160,6 +160,73 @@ def main() -> None:
         json.dumps(bounding_fixture, indent=2, sort_keys=True) + "\n"
     )
 
+    friends_points = np.array(
+        [
+            [0.10, 0.20],
+            [0.80, 0.20],
+            [0.50, 0.90],
+            [0.30, 0.70],
+            [0.65, 0.55],
+            [0.20, 0.35],
+        ]
+    )
+    friends = {}
+    for name, cls, ftype in [
+        ("radfriends", bounding.RadFriends, "balls"),
+        ("supfriends", bounding.SupFriends, "cubes"),
+    ]:
+        bound = cls(2)
+        bound.update(
+            friends_points,
+            rstate=np.random.default_rng(111),
+            bootstrap=0,
+            mc_integrate=False,
+            use_clustering=False,
+        )
+        bound.ctrs = friends_points
+        points_t = np.dot(friends_points, bound.axes_inv)
+        loo = bounding._friends_leaveoneout_radius(points_t, ftype)
+        friends[name] = {
+            "cov": bound.cov.tolist(),
+            "am": bound.am.tolist(),
+            "axes": bound.axes.tolist(),
+            "axes_inv": bound.axes_inv.tolist(),
+            "logvol": float(bound.logvol),
+            "ctrs": bound.ctrs.tolist(),
+            "loo_radius": loo.tolist(),
+            "contains": [bool(bound.contains(row)) for row in friends_points],
+            "overlap_first": int(bound.overlap(friends_points[0])),
+            "within_first_python_0_based": bound.within(friends_points[0]).tolist(),
+            "within_first_julia_1_based": (bound.within(friends_points[0]) + 1).tolist(),
+        }
+        scaled = cls(2, cov=bound.cov.copy())
+        scaled.ctrs = friends_points
+        scaled.scale_to_logvol(bound.logvol + 0.25)
+        friends[name]["scaled_logvol"] = float(scaled.logvol)
+        friends[name]["scaled_cov"] = scaled.cov.tolist()
+
+    boot_seed = np.random.SeedSequence(2468)
+    friends_fixture = {
+        "source": fixture["source"],
+        "points": friends_points.tolist(),
+        "radfriends": friends["radfriends"],
+        "supfriends": friends["supfriends"],
+        "bootstrap": {
+            "seed_note": "Julia bootstrap uses MersenneTwister and is checked by invariants, not same-seed equality.",
+            "python_balls": float(
+                bounding._friends_bootstrap_radius((friends_points, "balls", boot_seed))
+            ),
+            "python_cubes": float(
+                bounding._friends_bootstrap_radius((friends_points, "cubes", boot_seed))
+            ),
+        },
+        "rtol": 1e-8,
+        "atol": 1e-10,
+    }
+    (FIXTURES / "friends_core.json").write_text(
+        json.dumps(friends_fixture, indent=2, sort_keys=True) + "\n"
+    )
+
 
 if __name__ == "__main__":
     main()

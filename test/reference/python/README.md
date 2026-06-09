@@ -23,6 +23,8 @@ Current fixture files:
 - `fixtures/utils_core.json`: foundational utilities and evidence integration.
 - `fixtures/bounding_core.json`: UnitCube, Ellipsoid, MultiEllipsoid, and
   bounding helper cross-checks.
+- `fixtures/friends_core.json`: RadFriends, SupFriends, and friends-radius
+  helper cross-checks.
 
 Current source snapshot:
 

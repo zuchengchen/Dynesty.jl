@@ -13,6 +13,6 @@ documented here.
 | Pool semantics | Python exposes a `Pool` wrapper and `use_pool` controls. | Julia will expose `SerialMapBackend`, `ThreadedMapBackend`, and `DistributedMapBackend` with `queue_size`. | Match Julia execution models instead of copying Python multiprocessing surface shape. | Stage 1 parallel tests |
 | Plotting | Python plotting targets Matplotlib. | Julia plotting will use RecipesBase-compatible recipes and optional Plots.jl smoke tests. | Avoid a heavy plotting dependency in the core package. | Stage 8 plot tests |
 | Persistence | Python sampler save/restore uses pickle and h5py-style evaluation history. | Dynesty.jl checkpoints use Julia Serialization `.jls`, results use JLD2 `.jld2`, and HDF5 evaluation history is optional via extension. | Match Julia performance and package ecosystem while documenting archival limits. | Stage 1 persistence tests |
+| SupFriends centers | Python sampler sets `ctrs` externally before sampling; `SupFriends.update` does not assign centers directly. | Julia `update!(::SupFriends, points)` stores centers, matching `RadFriends` and making the bound self-contained. | Julia bounds should be valid immediately after update and still align with sampler behavior. | `test/test_bounding_friends.jl` |
 
 Major public behavior changes must be discussed before implementation.
-

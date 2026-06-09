@@ -18,8 +18,8 @@ Statuses:
 | `dynesty.bounding.UnitCube` | `UnitCube` | A | implemented | `test/test_bounding_unitcube_ellipsoid.jl` | `test/reference/python/fixtures/bounding_core.json` | Unit-cube bound. |
 | `dynesty.bounding.Ellipsoid` | `Ellipsoid` | A | implemented | `test/test_bounding_unitcube_ellipsoid.jl` | `test/reference/python/fixtures/bounding_core.json` | Ellipsoid bound. |
 | `dynesty.bounding.MultiEllipsoid` | `MultiEllipsoid` | A | implemented | `test/test_bounding_unitcube_ellipsoid.jl` | `test/reference/python/fixtures/bounding_core.json` | Multi-ellipsoid bound; recursive splitting remains conservative single-ellipsoid in Stage 2. |
-| `dynesty.bounding.RadFriends` | `RadFriends` | A | planned | `test/test_bounding_friends.jl` | planned | RadFriends bound. |
-| `dynesty.bounding.SupFriends` | `SupFriends` | A | planned | `test/test_bounding_friends.jl` | planned | SupFriends bound. |
+| `dynesty.bounding.RadFriends` | `RadFriends` | A | implemented | `test/test_bounding_friends.jl` | `test/reference/python/fixtures/friends_core.json` | RadFriends bound. |
+| `dynesty.bounding.SupFriends` | `SupFriends` | A | implemented | `test/test_bounding_friends.jl` | `test/reference/python/fixtures/friends_core.json` | SupFriends bound. |
 | `dynesty.bounding._slogdet_checked` | `_slogdet_checked` | B | planned | `test/test_bounding_unitcube_ellipsoid.jl` | planned | Internal determinant guard. |
 | `dynesty.bounding.logvol_prefactor` | `logvol_prefactor` | A | implemented | `test/test_utils.jl` | `test/reference/python/fixtures/bounding_core.json` | Volume helper. |
 | `dynesty.bounding.randsphere` | `randsphere` | B | implemented | `test/test_bounding_unitcube_ellipsoid.jl` | `test/reference/python/fixtures/bounding_core.json` | Statistical checks plus reference fixture metadata. |
@@ -30,8 +30,8 @@ Statuses:
 | `dynesty.bounding.bounding_ellipsoids` | `bounding_ellipsoids` | A | implemented | `test/test_bounding_unitcube_ellipsoid.jl` | `test/reference/python/fixtures/bounding_core.json` | Public multi-bound constructor; Stage 2 covers single-ellipsoid union. |
 | `dynesty.bounding._bootstrap_points` | `_bootstrap_points` | B | planned | `test/test_bounding_unitcube_ellipsoid.jl` | planned | Internal bootstrap helper. |
 | `dynesty.bounding._ellipsoid_bootstrap_expand` | `_ellipsoid_bootstrap_expand` | B | planned | `test/test_bounding_unitcube_ellipsoid.jl` | planned | Internal bootstrap expansion. |
-| `dynesty.bounding._friends_bootstrap_radius` | `_friends_bootstrap_radius` | B | planned | `test/test_bounding_friends.jl` | planned | Friends radius helper. |
-| `dynesty.bounding._friends_leaveoneout_radius` | `_friends_leaveoneout_radius` | B | planned | `test/test_bounding_friends.jl` | planned | Leave-one-out radius helper. |
+| `dynesty.bounding._friends_bootstrap_radius` | `_friends_bootstrap_radius` | B | implemented | `test/test_bounding_friends.jl` | `test/reference/python/fixtures/friends_core.json` | Friends radius helper; random bootstrap checked by invariants. |
+| `dynesty.bounding._friends_leaveoneout_radius` | `_friends_leaveoneout_radius` | B | implemented | `test/test_bounding_friends.jl` | `test/reference/python/fixtures/friends_core.json` | Leave-one-out radius helper. |
 | `dynesty.dynamicsampler.DynamicSamplerStatesEnum` | `DynamicSamplerState` | B | planned | `test/test_dynamic_sampler.jl` | planned | Julia enum-like replacement. |
 | `dynesty.dynamicsampler.compute_weights` | `compute_weights` | A | planned | `test/test_dynamic_sampler.jl` | planned | Dynamic weighting. |
 | `dynesty.dynamicsampler.weight_function` | `weight_function` | A | planned | `test/test_dynamic_sampler.jl` | planned | Dynamic batch weighting. |
