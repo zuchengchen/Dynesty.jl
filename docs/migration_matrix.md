@@ -1,0 +1,117 @@
+# Migration Matrix
+
+Source snapshot: `../dynesty` commit
+`3ec158de0d2bf12a56230faacd0c987b3d55d550` on branch `master`.
+
+Statuses:
+
+- `implemented`: Julia equivalent exists and has the listed coverage.
+- `planned`: not implemented yet.
+- `replacement`: covered by a Julia-native replacement rather than a direct API.
+- `internal`: implementation detail covered by caller behavior.
+
+| Python symbol | Julia symbol | Grade | Status | Julia test file | Python fixture file | Notes |
+| --- | --- | --- | --- | --- | --- | --- |
+| `dynesty.NestedSampler` | `NestedSampler` | A | planned | `test/test_static_sampler.jl` | planned | Public static sampler API. |
+| `dynesty.DynamicNestedSampler` | `DynamicNestedSampler` | A | planned | `test/test_dynamic_sampler.jl` | planned | Public dynamic sampler API. |
+| `dynesty.bounding.Bound` | `AbstractBound` | B | planned | `test/test_bounding_unitcube_ellipsoid.jl` | planned | Julia abstract interface replacement. |
+| `dynesty.bounding.UnitCube` | `UnitCube` | A | planned | `test/test_bounding_unitcube_ellipsoid.jl` | planned | Unit-cube bound. |
+| `dynesty.bounding.Ellipsoid` | `Ellipsoid` | A | planned | `test/test_bounding_unitcube_ellipsoid.jl` | planned | Ellipsoid bound. |
+| `dynesty.bounding.MultiEllipsoid` | `MultiEllipsoid` | A | planned | `test/test_bounding_unitcube_ellipsoid.jl` | planned | Multi-ellipsoid bound. |
+| `dynesty.bounding.RadFriends` | `RadFriends` | A | planned | `test/test_bounding_friends.jl` | planned | RadFriends bound. |
+| `dynesty.bounding.SupFriends` | `SupFriends` | A | planned | `test/test_bounding_friends.jl` | planned | SupFriends bound. |
+| `dynesty.bounding._slogdet_checked` | `_slogdet_checked` | B | planned | `test/test_bounding_unitcube_ellipsoid.jl` | planned | Internal determinant guard. |
+| `dynesty.bounding.logvol_prefactor` | `logvol_prefactor` | A | planned | `test/test_utils.jl` | planned | Volume helper. |
+| `dynesty.bounding.randsphere` | `randsphere` | B | planned | `test/test_bounding_unitcube_ellipsoid.jl` | planned | Statistical checks. |
+| `dynesty.bounding.rand_choice` | `rand_choice` | B | planned | `test/test_bounding_unitcube_ellipsoid.jl` | planned | Weighted random choice. |
+| `dynesty.bounding.improve_covar_mat` | `improve_covar_mat` | B | planned | `test/test_bounding_unitcube_ellipsoid.jl` | planned | Covariance conditioning. |
+| `dynesty.bounding.bounding_ellipsoid` | `bounding_ellipsoid` | A | planned | `test/test_bounding_unitcube_ellipsoid.jl` | planned | Deterministic fixture and tolerance checks. |
+| `dynesty.bounding._bounding_ellipsoids` | `_bounding_ellipsoids` | B | planned | `test/test_bounding_unitcube_ellipsoid.jl` | planned | Internal recursive helper. |
+| `dynesty.bounding.bounding_ellipsoids` | `bounding_ellipsoids` | A | planned | `test/test_bounding_unitcube_ellipsoid.jl` | planned | Public multi-bound constructor. |
+| `dynesty.bounding._bootstrap_points` | `_bootstrap_points` | B | planned | `test/test_bounding_unitcube_ellipsoid.jl` | planned | Internal bootstrap helper. |
+| `dynesty.bounding._ellipsoid_bootstrap_expand` | `_ellipsoid_bootstrap_expand` | B | planned | `test/test_bounding_unitcube_ellipsoid.jl` | planned | Internal bootstrap expansion. |
+| `dynesty.bounding._friends_bootstrap_radius` | `_friends_bootstrap_radius` | B | planned | `test/test_bounding_friends.jl` | planned | Friends radius helper. |
+| `dynesty.bounding._friends_leaveoneout_radius` | `_friends_leaveoneout_radius` | B | planned | `test/test_bounding_friends.jl` | planned | Leave-one-out radius helper. |
+| `dynesty.dynamicsampler.DynamicSamplerStatesEnum` | `DynamicSamplerState` | B | planned | `test/test_dynamic_sampler.jl` | planned | Julia enum-like replacement. |
+| `dynesty.dynamicsampler.compute_weights` | `compute_weights` | A | planned | `test/test_dynamic_sampler.jl` | planned | Dynamic weighting. |
+| `dynesty.dynamicsampler.weight_function` | `weight_function` | A | planned | `test/test_dynamic_sampler.jl` | planned | Dynamic batch weighting. |
+| `dynesty.dynamicsampler.stopping_function` | `stopping_function` | A | planned | `test/test_dynamic_sampler.jl` | planned | Stopping criteria. |
+| `dynesty.dynamicsampler._configure_batch_sampler` | `_configure_batch_sampler` | B | planned | `test/test_dynamic_sampler.jl` | planned | Internal dynamic configuration. |
+| `dynesty.dynamicsampler.DynamicSampler` | `DynamicSampler` | A | planned | `test/test_dynamic_sampler.jl` | planned | Dynamic sampler engine. |
+| `dynesty.dynesty._get_citations` | `get_citations` | C | implemented | `test/runtests.jl` | not needed | Julia helper includes required citation set. |
+| `dynesty.dynesty._get_internal_sampler` | `_get_internal_sampler` | B | planned | `test/test_static_sampler.jl` | planned | Sampler factory. |
+| `dynesty.dynesty._get_enlarge_bootstrap` | `_get_enlarge_bootstrap` | B | planned | `test/test_static_sampler.jl` | planned | Bound defaults. |
+| `dynesty.dynesty._check_first_update` | `_check_first_update` | B | planned | `test/test_static_sampler.jl` | planned | First-update validation. |
+| `dynesty.dynesty._get_update_interval_ratio` | `_get_update_interval_ratio` | B | planned | `test/test_static_sampler.jl` | planned | Bound update heuristic. |
+| `dynesty.dynesty._assemble_sampler_docstring` | documentation generation | C | replacement | docs build | not needed | Julia docs will be written directly. |
+| `dynesty.dynesty._common_sampler_init` | `_common_sampler_init` | B | planned | `test/test_static_sampler.jl` | planned | Shared sampler initialization. |
+| `dynesty.dynesty._function_wrapper` | callable wrappers | C | replacement | `test/test_static_sampler.jl` | not needed | Julia closures/callable objects replace arg/kwarg wrappers. |
+| `dynesty.internal_samplers.InternalSampler` | `AbstractInternalSampler` | B | planned | `test/test_internal_samplers.jl` | planned | Julia abstract interface replacement. |
+| `dynesty.internal_samplers.UniformBoundSampler` | `UniformBoundSampler` | A | planned | `test/test_internal_samplers.jl` | planned | Bound rejection sampler. |
+| `dynesty.internal_samplers.UnitCubeSampler` | `UnitCubeSampler` | A | planned | `test/test_internal_samplers.jl` | planned | Unit-cube sampler. |
+| `dynesty.internal_samplers.RWalkSampler` | `RWalkSampler` | A | planned | `test/test_internal_samplers.jl` | planned | Random-walk sampler. |
+| `dynesty.internal_samplers.SliceSampler` | `SliceSampler` | A | planned | `test/test_internal_samplers.jl` | planned | Slice sampler. |
+| `dynesty.internal_samplers.RSliceSampler` | `RSliceSampler` | A | planned | `test/test_internal_samplers.jl` | planned | Random-direction slice sampler. |
+| `dynesty.internal_samplers.generic_random_walk` | `generic_random_walk` | A | planned | `test/test_internal_samplers.jl` | planned | Proposal kernel. |
+| `dynesty.internal_samplers.propose_ball_point` | `propose_ball_point` | B | planned | `test/test_internal_samplers.jl` | planned | Ball proposal helper. |
+| `dynesty.internal_samplers._slice_doubling_accept` | `_slice_doubling_accept` | B | planned | `test/test_internal_samplers.jl` | planned | Slice acceptance helper. |
+| `dynesty.internal_samplers.generic_slice_step` | `generic_slice_step` | A | planned | `test/test_internal_samplers.jl` | planned | Slice kernel. |
+| `dynesty.internal_samplers.tune_slice` | `tune_slice` | B | planned | `test/test_internal_samplers.jl` | planned | Tuning helper. |
+| `dynesty.plotting._make_subplots` | plotting backend setup | C | replacement | `test/test_plotting.jl` | not needed | Recipes/Plots-compatible replacement. |
+| `dynesty.plotting.rotate_ticks` | plotting backend setup | C | replacement | `test/test_plotting.jl` | not needed | Matplotlib-specific helper not directly exposed. |
+| `dynesty.plotting.plot_thruth` | `plot_truth` | C | planned | `test/test_plotting.jl` | not needed | Name typo kept only if compatibility is useful. |
+| `dynesty.plotting.check_span` | `check_span` | B | planned | `test/test_plotting.jl` | planned | Plot range helper. |
+| `dynesty.plotting.runplot` | `runplot` | C | planned | `test/test_plotting.jl` | not needed | Plot smoke test. |
+| `dynesty.plotting.traceplot` | `traceplot` | C | planned | `test/test_plotting.jl` | not needed | Plot smoke test. |
+| `dynesty.plotting.cornerpoints` | `cornerpoints` | C | planned | `test/test_plotting.jl` | not needed | Plot smoke test. |
+| `dynesty.plotting.cornerplot` | `cornerplot` | C | planned | `test/test_plotting.jl` | not needed | Plot smoke test. |
+| `dynesty.plotting.boundplot` | `boundplot` | C | planned | `test/test_plotting.jl` | not needed | Plot smoke test. |
+| `dynesty.plotting.cornerbound` | `cornerbound` | C | planned | `test/test_plotting.jl` | not needed | Plot smoke test. |
+| `dynesty.plotting._hist2d` | `_hist2d` | B | planned | `test/test_plotting.jl` | planned | Numerical histogram helper. |
+| `dynesty.pool.FunctionCache` | backend task closure | C | replacement | `test/test_parallel.jl` | not needed | Julia map backends replace Python multiprocessing cache. |
+| `dynesty.pool.initializer` | backend initialization | C | replacement | `test/test_parallel.jl` | not needed | Julia backend setup. |
+| `dynesty.pool.loglike_cache` | backend task closure | C | replacement | `test/test_parallel.jl` | not needed | Julia closures replace global cache. |
+| `dynesty.pool.prior_transform_cache` | backend task closure | C | replacement | `test/test_parallel.jl` | not needed | Julia closures replace global cache. |
+| `dynesty.pool.Pool` | `SerialMapBackend` / `ThreadedMapBackend` / `DistributedMapBackend` | A | planned | `test/test_parallel.jl` | planned | Ordered map replacement with queue controls. |
+| `dynesty.sampler._get_bound` | `_get_bound` | B | planned | `test/test_static_sampler.jl` | planned | Bound factory. |
+| `dynesty.sampler._initialize_live_points` | `_initialize_live_points` | A | planned | `test/test_static_sampler.jl` | planned | Live point initialization. |
+| `dynesty.sampler.Sampler` | `NestedSampler` internals | A | planned | `test/test_static_sampler.jl` | planned | Static sampler engine. |
+| `dynesty.utils.LoglOutput` | `LoglOutput` | A | planned | `test/test_utils.jl` | planned | Likelihood output with optional blob. |
+| `dynesty.utils.LogLikelihood` | `LogLikelihood` | A | planned | `test/test_utils.jl` | planned | Callable wrapper and evaluation history. |
+| `dynesty.utils.RunRecord` | `RunRecord` | B | planned | `test/test_results.jl` | planned | Run accumulation. |
+| `dynesty.utils.DelayTimer` | `DelayTimer` | C | planned | `test/test_utils.jl` | not needed | Progress-print helper. |
+| `dynesty.utils._update_tqdm_eta_from_dlogz` | progress metadata | C | replacement | `test/test_utils.jl` | not needed | TQDM-specific behavior omitted. |
+| `dynesty.utils.print_fn` | `print_fn` | C | planned | `test/test_utils.jl` | not needed | Display helper. |
+| `dynesty.utils.get_print_fn_args` | `get_print_fn_args` | C | planned | `test/test_utils.jl` | not needed | Display helper. |
+| `dynesty.utils.print_fn_tqdm` | progress backend | C | replacement | `test/test_utils.jl` | not needed | TQDM-specific behavior replaced. |
+| `dynesty.utils.print_fn_fallback` | `print_fn_fallback` | C | planned | `test/test_utils.jl` | not needed | Display helper. |
+| `dynesty.utils.Results` | `Results` | A | planned | `test/test_results.jl` | planned | Public results container. |
+| `dynesty.utils.results_substitute` | `results_substitute` | B | planned | `test/test_results.jl` | planned | Results replacement helper. |
+| `dynesty.utils.get_nonbounded` | `get_nonbounded` | B | planned | `test/test_utils.jl` | planned | Bound-type helper. |
+| `dynesty.utils.get_print_func` | `get_print_func` | C | planned | `test/test_utils.jl` | not needed | Display helper. |
+| `dynesty.utils.get_random_generator` | `get_random_generator` | B | planned | `test/test_utils.jl` | planned | RNG compatibility helper. |
+| `dynesty.utils.get_seed_sequence` | deterministic seed splitting | A | planned | `test/test_parallel.jl` | planned | Julia-native deterministic seeds. |
+| `dynesty.utils.get_neff_from_logwt` | `get_neff_from_logwt` | A | planned | `test/test_utils.jl` | planned | Effective sample size. |
+| `dynesty.utils.unitcheck` | `unitcheck` | A | planned | `test/test_utils.jl` | planned | Unit-cube validation. |
+| `dynesty.utils.apply_reflect` | `apply_reflect` | A | planned | `test/test_utils.jl` | planned | Reflective dimension handling. |
+| `dynesty.utils.mean_and_cov` | `mean_and_cov` | A | planned | `test/test_utils.jl` | planned | Weighted statistics. |
+| `dynesty.utils.resample_equal` | `resample_equal` | A | planned | `test/test_utils.jl` | planned | Equal-weight resampling. |
+| `dynesty.utils.quantile` | `quantile` | A | planned | `test/test_utils.jl` | planned | Weighted quantile. |
+| `dynesty.utils._get_nsamps_samples_n` | `_get_nsamps_samples_n` | B | planned | `test/test_results_postprocess.jl` | planned | Post-processing helper. |
+| `dynesty.utils._find_decrease` | `_find_decrease` | B | planned | `test/test_results_postprocess.jl` | planned | Post-processing helper. |
+| `dynesty.utils.jitter_run` | `jitter_run` | A | planned | `test/test_results_postprocess.jl` | planned | Error estimate helper. |
+| `dynesty.utils.compute_integrals` | `compute_integrals` | A | planned | `test/test_utils.jl` | planned | Evidence integral baseline. |
+| `dynesty.utils.progress_integration` | `progress_integration` | A | planned | `test/test_utils.jl` | planned | Running evidence integration. |
+| `dynesty.utils.resample_run` | `resample_run` | A | planned | `test/test_results_postprocess.jl` | planned | Run resampling. |
+| `dynesty.utils.reweight_run` | `reweight_run` | A | planned | `test/test_results_postprocess.jl` | planned | Importance reweighting. |
+| `dynesty.utils.unravel_run` | `unravel_run` | A | planned | `test/test_results_postprocess.jl` | planned | Run unraveling. |
+| `dynesty.utils.merge_runs` | `merge_runs` | A | planned | `test/test_results_postprocess.jl` | planned | Run merge. |
+| `dynesty.utils.check_result_static` | `check_result_static` | A | planned | `test/test_results_postprocess.jl` | planned | Result validator. |
+| `dynesty.utils.kld_error` | `kld_error` | A | planned | `test/test_results_postprocess.jl` | planned | KLD error estimate. |
+| `dynesty.utils._prepare_for_merge` | `_prepare_for_merge` | B | planned | `test/test_results_postprocess.jl` | planned | Merge helper. |
+| `dynesty.utils._merge_two` | `_merge_two` | B | planned | `test/test_results_postprocess.jl` | planned | Merge helper. |
+| `dynesty.utils._kld_error` | `_kld_error` | B | planned | `test/test_results_postprocess.jl` | planned | KLD helper. |
+| `dynesty.utils.restore_sampler` | `restore_sampler` | A | planned | `test/test_persistence.jl` | planned | Julia Serialization checkpoint restore. |
+| `dynesty.utils.save_sampler` | `save_sampler` | A | planned | `test/test_persistence.jl` | planned | Julia Serialization checkpoint save. |
+| `dynesty.utils._parse_pool_queue` | `normalize_queue_size` | B | planned | `test/test_parallel.jl` | planned | Julia backend queue parsing. |
+

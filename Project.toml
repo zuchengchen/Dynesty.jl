@@ -1,0 +1,46 @@
+name = "Dynesty"
+uuid = "85840bda-5e0f-49fd-9028-64be87c2275e"
+authors = ["Dynesty.jl contributors"]
+version = "0.1.0"
+
+[deps]
+Clustering = "aaaa29a8-35af-508c-8bc3-b662a17a0fe5"
+Distances = "b4f34e82-e78d-54a5-968a-f98e89d6e8f7"
+Distributed = "8ba89e20-285c-5b6f-9357-94700520ee1b"
+JLD2 = "033835bb-8acc-5ee8-8aae-3f567f8a3819"
+JSON3 = "0f8b85d8-7281-11e9-16c2-39a750bddbf1"
+LinearAlgebra = "37e2e46d-f89d-539d-b4ee-838fcccc9c8e"
+NPZ = "15e1cf62-19b3-5cfa-8e77-841668bca605"
+NearestNeighbors = "b8a86587-4115-5ab1-83bc-aa920d37bbce"
+Printf = "de0858da-6303-5e67-8744-51eddeeeb8d7"
+Random = "9a3f8284-a2c9-5f02-9a11-845980a1fd5c"
+RecipesBase = "3cdcf5f2-1ef4-517c-9805-6587b60abb01"
+Serialization = "9e88b42a-f829-5b0c-bbe9-9e923198166b"
+SpecialFunctions = "276daf66-3868-5448-9aa4-cd146d93841b"
+Statistics = "10745b16-79ce-11e8-11f9-7d13ad32a3b2"
+StatsBase = "2913bbd2-ae8a-5f71-8c99-4fb6c76f3a91"
+
+[weakdeps]
+HDF5 = "f67ccb44-e63f-5c2f-98bd-6dc0ccc4ba2f"
+
+[extensions]
+DynestyHDF5Ext = "HDF5"
+
+[compat]
+Clustering = "0.15"
+Distances = "0.10"
+HDF5 = "0.17"
+JLD2 = "0.5"
+JSON3 = "1"
+NPZ = "0.4"
+NearestNeighbors = "0.4"
+RecipesBase = "1"
+SpecialFunctions = "2"
+StatsBase = "0.34"
+julia = "1.11"
+
+[extras]
+Test = "8dfed614-e22c-5e08-85e1-65c5234f0b40"
+
+[targets]
+test = ["Test"]

@@ -1,0 +1,42 @@
+# Testing Strategy
+
+Default tests must pass with:
+
+```sh
+julia --project=. -e 'using Pkg; Pkg.test()'
+```
+
+Default CI must not require a live Python installation or the adjacent
+`../dynesty` repository. Python behavior checks use committed fixtures generated
+from `../dynesty`.
+
+## Test Grades
+
+| Grade | Scope | Required coverage |
+| --- | --- | --- |
+| A | Public API and core numerical functions | Direct Julia tests and Python fixture cross-checks wherever meaningful |
+| B | Internal helpers that affect algorithm behavior | Direct or indirect Julia tests; fixtures when inputs and outputs are stable |
+| C | Thin wrappers, display, printing, compatibility aliases, plotting helpers, demo/doc helpers | Caller tests, smoke tests, snapshots, or migration-matrix notes |
+
+## Extended Test Flags
+
+| Environment variable | Purpose |
+| --- | --- |
+| `DYNESTY_RUN_SLOW_TESTS=true` | Slow integration and Monte Carlo checks |
+| `DYNESTY_RUN_PLOT_TESTS=true` | Optional plotting smoke tests |
+| `DYNESTY_RUN_EXTENDED_TESTS=true` | Live or heavyweight reference checks |
+| `DYNESTY_RUN_DISTRIBUTED_TESTS=true` | Distributed backend tests |
+| `DYNESTY_RUN_JET_TESTS=true` | Optional JET.jl checks |
+| `DYNESTY_REGENERATE_FIXTURES=true` | Regenerate Python reference fixtures |
+
+## Fixture Policy
+
+Fixtures use JSON for metadata, scalars, tolerances, exception expectations,
+descriptions, and statistical summaries. NPZ stores arrays, matrices, and sample
+sets. Fixture metadata records the source commit, dirty status, Python version,
+NumPy version, SciPy version, fixture generation date, and tolerance rationale.
+
+Deterministic numerical functions default to `rtol=1e-10` and `atol=1e-12`.
+Matrix decomposition, covariance, log-determinant, or clustering-order cases may
+use `rtol=1e-8` and `atol=1e-10` when justified.
+
