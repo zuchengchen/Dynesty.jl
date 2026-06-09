@@ -40,3 +40,7 @@ Deterministic numerical functions default to `rtol=1e-10` and `atol=1e-12`.
 Matrix decomposition, covariance, log-determinant, or clustering-order cases may
 use `rtol=1e-8` and `atol=1e-10` when justified.
 
+Stage 1 fixtures cover `get_neff_from_logwt`, `apply_reflect`,
+`mean_and_cov`, and `compute_integrals`. The fixture generator is
+`test/reference/python/generate_reference.py`; default tests read
+`test/reference/python/fixtures/utils_core.json`.

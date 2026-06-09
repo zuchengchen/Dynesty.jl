@@ -21,7 +21,7 @@ Statuses:
 | `dynesty.bounding.RadFriends` | `RadFriends` | A | planned | `test/test_bounding_friends.jl` | planned | RadFriends bound. |
 | `dynesty.bounding.SupFriends` | `SupFriends` | A | planned | `test/test_bounding_friends.jl` | planned | SupFriends bound. |
 | `dynesty.bounding._slogdet_checked` | `_slogdet_checked` | B | planned | `test/test_bounding_unitcube_ellipsoid.jl` | planned | Internal determinant guard. |
-| `dynesty.bounding.logvol_prefactor` | `logvol_prefactor` | A | planned | `test/test_utils.jl` | planned | Volume helper. |
+| `dynesty.bounding.logvol_prefactor` | `logvol_prefactor` | A | implemented | `test/test_utils.jl` | planned | Volume helper; Python fixture will be expanded with bounding fixtures in Stage 2. |
 | `dynesty.bounding.randsphere` | `randsphere` | B | planned | `test/test_bounding_unitcube_ellipsoid.jl` | planned | Statistical checks. |
 | `dynesty.bounding.rand_choice` | `rand_choice` | B | planned | `test/test_bounding_unitcube_ellipsoid.jl` | planned | Weighted random choice. |
 | `dynesty.bounding.improve_covar_mat` | `improve_covar_mat` | B | planned | `test/test_bounding_unitcube_ellipsoid.jl` | planned | Covariance conditioning. |
@@ -72,36 +72,36 @@ Statuses:
 | `dynesty.pool.initializer` | backend initialization | C | replacement | `test/test_parallel.jl` | not needed | Julia backend setup. |
 | `dynesty.pool.loglike_cache` | backend task closure | C | replacement | `test/test_parallel.jl` | not needed | Julia closures replace global cache. |
 | `dynesty.pool.prior_transform_cache` | backend task closure | C | replacement | `test/test_parallel.jl` | not needed | Julia closures replace global cache. |
-| `dynesty.pool.Pool` | `SerialMapBackend` / `ThreadedMapBackend` / `DistributedMapBackend` | A | planned | `test/test_parallel.jl` | planned | Ordered map replacement with queue controls. |
+| `dynesty.pool.Pool` | `SerialMapBackend` / `ThreadedMapBackend` / `DistributedMapBackend` | A | implemented | `test/test_parallel.jl` | not needed | Ordered Julia-native map replacement with queue controls; Python Pool shape intentionally replaced. |
 | `dynesty.sampler._get_bound` | `_get_bound` | B | planned | `test/test_static_sampler.jl` | planned | Bound factory. |
 | `dynesty.sampler._initialize_live_points` | `_initialize_live_points` | A | planned | `test/test_static_sampler.jl` | planned | Live point initialization. |
 | `dynesty.sampler.Sampler` | `NestedSampler` internals | A | planned | `test/test_static_sampler.jl` | planned | Static sampler engine. |
-| `dynesty.utils.LoglOutput` | `LoglOutput` | A | planned | `test/test_utils.jl` | planned | Likelihood output with optional blob. |
-| `dynesty.utils.LogLikelihood` | `LogLikelihood` | A | planned | `test/test_utils.jl` | planned | Callable wrapper and evaluation history. |
-| `dynesty.utils.RunRecord` | `RunRecord` | B | planned | `test/test_results.jl` | planned | Run accumulation. |
+| `dynesty.utils.LoglOutput` | `LoglOutput` | A | implemented | `test/test_utils.jl` | `test/reference/python/fixtures/utils_core.json` | Likelihood output with optional blob. |
+| `dynesty.utils.LogLikelihood` | `LogLikelihood` | A | implemented | `test/test_utils.jl` | not needed | Callable wrapper implemented; HDF5 history flushing is extension-backed. |
+| `dynesty.utils.RunRecord` | `RunRecord` | B | implemented | `test/test_results.jl` | not needed | Run accumulation. |
 | `dynesty.utils.DelayTimer` | `DelayTimer` | C | planned | `test/test_utils.jl` | not needed | Progress-print helper. |
 | `dynesty.utils._update_tqdm_eta_from_dlogz` | progress metadata | C | replacement | `test/test_utils.jl` | not needed | TQDM-specific behavior omitted. |
 | `dynesty.utils.print_fn` | `print_fn` | C | planned | `test/test_utils.jl` | not needed | Display helper. |
 | `dynesty.utils.get_print_fn_args` | `get_print_fn_args` | C | planned | `test/test_utils.jl` | not needed | Display helper. |
 | `dynesty.utils.print_fn_tqdm` | progress backend | C | replacement | `test/test_utils.jl` | not needed | TQDM-specific behavior replaced. |
 | `dynesty.utils.print_fn_fallback` | `print_fn_fallback` | C | planned | `test/test_utils.jl` | not needed | Display helper. |
-| `dynesty.utils.Results` | `Results` | A | planned | `test/test_results.jl` | planned | Public results container. |
-| `dynesty.utils.results_substitute` | `results_substitute` | B | planned | `test/test_results.jl` | planned | Results replacement helper. |
+| `dynesty.utils.Results` | `Results` | A | implemented | `test/test_results.jl` | planned | Public results container; postprocessing fixture expansion continues in Stage 6. |
+| `dynesty.utils.results_substitute` | `results_substitute` | B | implemented | `test/test_results.jl` | planned | Results replacement helper. |
 | `dynesty.utils.get_nonbounded` | `get_nonbounded` | B | planned | `test/test_utils.jl` | planned | Bound-type helper. |
 | `dynesty.utils.get_print_func` | `get_print_func` | C | planned | `test/test_utils.jl` | not needed | Display helper. |
 | `dynesty.utils.get_random_generator` | `get_random_generator` | B | planned | `test/test_utils.jl` | planned | RNG compatibility helper. |
-| `dynesty.utils.get_seed_sequence` | deterministic seed splitting | A | planned | `test/test_parallel.jl` | planned | Julia-native deterministic seeds. |
-| `dynesty.utils.get_neff_from_logwt` | `get_neff_from_logwt` | A | planned | `test/test_utils.jl` | planned | Effective sample size. |
-| `dynesty.utils.unitcheck` | `unitcheck` | A | planned | `test/test_utils.jl` | planned | Unit-cube validation. |
-| `dynesty.utils.apply_reflect` | `apply_reflect` | A | planned | `test/test_utils.jl` | planned | Reflective dimension handling. |
-| `dynesty.utils.mean_and_cov` | `mean_and_cov` | A | planned | `test/test_utils.jl` | planned | Weighted statistics. |
-| `dynesty.utils.resample_equal` | `resample_equal` | A | planned | `test/test_utils.jl` | planned | Equal-weight resampling. |
-| `dynesty.utils.quantile` | `quantile` | A | planned | `test/test_utils.jl` | planned | Weighted quantile. |
+| `dynesty.utils.get_seed_sequence` | `task_seeds` | A | implemented | `test/test_parallel.jl` | not needed | Julia-native deterministic seeds; no cross-language same-seed promise. |
+| `dynesty.utils.get_neff_from_logwt` | `get_neff_from_logwt` | A | implemented | `test/test_utils.jl` | `test/reference/python/fixtures/utils_core.json` | Effective sample size. |
+| `dynesty.utils.unitcheck` | `unitcheck` | A | implemented | `test/test_utils.jl` | planned | Unit-cube validation. |
+| `dynesty.utils.apply_reflect` | `apply_reflect` / `apply_reflect!` | A | implemented | `test/test_utils.jl` | `test/reference/python/fixtures/utils_core.json` | Reflective dimension handling. |
+| `dynesty.utils.mean_and_cov` | `mean_and_cov` | A | implemented | `test/test_utils.jl` | `test/reference/python/fixtures/utils_core.json` | Weighted statistics. |
+| `dynesty.utils.resample_equal` | `resample_equal` | A | implemented | `test/test_utils.jl` | planned | Equal-weight resampling; statistical fixture expansion remains. |
+| `dynesty.utils.quantile` | `quantile` | A | implemented | `test/test_utils.jl` | planned | Weighted quantile. |
 | `dynesty.utils._get_nsamps_samples_n` | `_get_nsamps_samples_n` | B | planned | `test/test_results_postprocess.jl` | planned | Post-processing helper. |
 | `dynesty.utils._find_decrease` | `_find_decrease` | B | planned | `test/test_results_postprocess.jl` | planned | Post-processing helper. |
 | `dynesty.utils.jitter_run` | `jitter_run` | A | planned | `test/test_results_postprocess.jl` | planned | Error estimate helper. |
-| `dynesty.utils.compute_integrals` | `compute_integrals` | A | planned | `test/test_utils.jl` | planned | Evidence integral baseline. |
-| `dynesty.utils.progress_integration` | `progress_integration` | A | planned | `test/test_utils.jl` | planned | Running evidence integration. |
+| `dynesty.utils.compute_integrals` | `compute_integrals` | A | implemented | `test/test_utils.jl` | `test/reference/python/fixtures/utils_core.json` | Evidence integral baseline. |
+| `dynesty.utils.progress_integration` | `progress_integration` | A | implemented | `test/test_utils.jl` | planned | Running evidence integration. |
 | `dynesty.utils.resample_run` | `resample_run` | A | planned | `test/test_results_postprocess.jl` | planned | Run resampling. |
 | `dynesty.utils.reweight_run` | `reweight_run` | A | planned | `test/test_results_postprocess.jl` | planned | Importance reweighting. |
 | `dynesty.utils.unravel_run` | `unravel_run` | A | planned | `test/test_results_postprocess.jl` | planned | Run unraveling. |
@@ -111,7 +111,6 @@ Statuses:
 | `dynesty.utils._prepare_for_merge` | `_prepare_for_merge` | B | planned | `test/test_results_postprocess.jl` | planned | Merge helper. |
 | `dynesty.utils._merge_two` | `_merge_two` | B | planned | `test/test_results_postprocess.jl` | planned | Merge helper. |
 | `dynesty.utils._kld_error` | `_kld_error` | B | planned | `test/test_results_postprocess.jl` | planned | KLD helper. |
-| `dynesty.utils.restore_sampler` | `restore_sampler` | A | planned | `test/test_persistence.jl` | planned | Julia Serialization checkpoint restore. |
-| `dynesty.utils.save_sampler` | `save_sampler` | A | planned | `test/test_persistence.jl` | planned | Julia Serialization checkpoint save. |
-| `dynesty.utils._parse_pool_queue` | `normalize_queue_size` | B | planned | `test/test_parallel.jl` | planned | Julia backend queue parsing. |
-
+| `dynesty.utils.restore_sampler` | `restore_sampler` | A | implemented | `test/test_persistence.jl` | not needed | Julia Serialization checkpoint restore; requires user functions again. |
+| `dynesty.utils.save_sampler` | `save_sampler` / `checkpoint!` | A | implemented | `test/test_persistence.jl` | not needed | Julia Serialization checkpoint save. |
+| `dynesty.utils._parse_pool_queue` | `_normalize_queue_size` | B | implemented | `test/test_parallel.jl` | not needed | Julia backend queue parsing. |

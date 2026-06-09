@@ -7,8 +7,13 @@ using Test
     @test citations() == get_citations()
     @test occursin("Speagle", get_citations())
     @test occursin("Skilling", get_citations())
-    @test get_citations(format = :records) isa Tuple
-    @test occursin("@article", get_citations(format = :bibtex))
-    @test_throws ArgumentError get_citations(format = :unknown)
+    @test get_citations(format=:records) isa Tuple
+    @test occursin("@article", get_citations(format=:bibtex))
+    @test_throws ArgumentError get_citations(format=:unknown)
 end
 
+include("test_utils.jl")
+include("test_results.jl")
+include("test_persistence.jl")
+include("test_parallel.jl")
+include("test_crosscheck_fixtures.jl")

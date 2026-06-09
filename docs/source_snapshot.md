@@ -12,7 +12,7 @@ Snapshot date: 2026-06-10T02:41:25+08:00
 | Python version | `3.9.18` |
 | NumPy version | `1.21.5` |
 | SciPy version | `1.7.3` |
-| Fixture generation date | not generated in Stage 0 |
+| Fixture generation date | 2026-06-09T19:05:20.980557+00:00 |
 | Source dirty | no |
 
 The source repository was inspected read-only. No pull, checkout, branch switch,
@@ -60,9 +60,11 @@ Behavior references:
 - `tests/test_saver.py`
 - `tests/test_volume.py`
 
+Fixture metadata is recorded in `test/reference/python/fixtures/utils_core.json`
+for the Stage 1 core-utility cross-checks.
+
 Documentation and demo references:
 
 - `README.md`
 - `docs/source/*.rst`
 - `demos/*.ipynb`
-
