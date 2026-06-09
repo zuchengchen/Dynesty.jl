@@ -46,17 +46,17 @@ Statuses:
 | `dynesty.dynesty._assemble_sampler_docstring` | documentation generation | C | replacement | docs build | not needed | Julia docs will be written directly. |
 | `dynesty.dynesty._common_sampler_init` | `_common_sampler_init` | B | planned | `test/test_static_sampler.jl` | planned | Shared sampler initialization. |
 | `dynesty.dynesty._function_wrapper` | callable wrappers | C | replacement | `test/test_static_sampler.jl` | not needed | Julia closures/callable objects replace arg/kwarg wrappers. |
-| `dynesty.internal_samplers.InternalSampler` | `AbstractInternalSampler` | B | planned | `test/test_internal_samplers.jl` | planned | Julia abstract interface replacement. |
-| `dynesty.internal_samplers.UniformBoundSampler` | `UniformBoundSampler` | A | planned | `test/test_internal_samplers.jl` | planned | Bound rejection sampler. |
-| `dynesty.internal_samplers.UnitCubeSampler` | `UnitCubeSampler` | A | planned | `test/test_internal_samplers.jl` | planned | Unit-cube sampler. |
-| `dynesty.internal_samplers.RWalkSampler` | `RWalkSampler` | A | planned | `test/test_internal_samplers.jl` | planned | Random-walk sampler. |
-| `dynesty.internal_samplers.SliceSampler` | `SliceSampler` | A | planned | `test/test_internal_samplers.jl` | planned | Slice sampler. |
-| `dynesty.internal_samplers.RSliceSampler` | `RSliceSampler` | A | planned | `test/test_internal_samplers.jl` | planned | Random-direction slice sampler. |
-| `dynesty.internal_samplers.generic_random_walk` | `generic_random_walk` | A | planned | `test/test_internal_samplers.jl` | planned | Proposal kernel. |
-| `dynesty.internal_samplers.propose_ball_point` | `propose_ball_point` | B | planned | `test/test_internal_samplers.jl` | planned | Ball proposal helper. |
-| `dynesty.internal_samplers._slice_doubling_accept` | `_slice_doubling_accept` | B | planned | `test/test_internal_samplers.jl` | planned | Slice acceptance helper. |
-| `dynesty.internal_samplers.generic_slice_step` | `generic_slice_step` | A | planned | `test/test_internal_samplers.jl` | planned | Slice kernel. |
-| `dynesty.internal_samplers.tune_slice` | `tune_slice` | B | planned | `test/test_internal_samplers.jl` | planned | Tuning helper. |
+| `dynesty.internal_samplers.InternalSampler` | `AbstractInternalSampler` | B | implemented | `test/test_internal_samplers.jl` | not needed | Julia abstract interface replacement. |
+| `dynesty.internal_samplers.UniformBoundSampler` | `UniformBoundSampler` | A | implemented | `test/test_internal_samplers.jl` | statistical/invariant | Bound rejection sampler. |
+| `dynesty.internal_samplers.UnitCubeSampler` | `UnitCubeSampler` | A | implemented | `test/test_internal_samplers.jl` | statistical/invariant | Unit-cube sampler. |
+| `dynesty.internal_samplers.RWalkSampler` | `RWalkSampler` | A | implemented | `test/test_internal_samplers.jl` | statistical/invariant | Random-walk sampler. |
+| `dynesty.internal_samplers.SliceSampler` | `SliceSampler` | A | implemented | `test/test_internal_samplers.jl` | statistical/invariant | Slice sampler. |
+| `dynesty.internal_samplers.RSliceSampler` | `RSliceSampler` | A | implemented | `test/test_internal_samplers.jl` | statistical/invariant | Random-direction slice sampler. |
+| `dynesty.internal_samplers.generic_random_walk` | `generic_random_walk` | A | implemented | `test/test_internal_samplers.jl` | statistical/invariant | Proposal kernel. |
+| `dynesty.internal_samplers.propose_ball_point` | `propose_ball_point` | B | implemented | `test/test_internal_samplers.jl` | not needed | Ball proposal helper with 1-based periodic/reflective indices. |
+| `dynesty.internal_samplers._slice_doubling_accept` | `_slice_doubling_accept` | B | implemented | `test/test_internal_samplers.jl` | not needed | Slice acceptance helper. |
+| `dynesty.internal_samplers.generic_slice_step` | `generic_slice_step` | A | implemented | `test/test_internal_samplers.jl` | statistical/invariant | Slice kernel. |
+| `dynesty.internal_samplers.tune_slice` | `tune_slice` | B | implemented | `test/test_internal_samplers.jl` | not needed | Tuning helper. |
 | `dynesty.plotting._make_subplots` | plotting backend setup | C | replacement | `test/test_plotting.jl` | not needed | Recipes/Plots-compatible replacement. |
 | `dynesty.plotting.rotate_ticks` | plotting backend setup | C | replacement | `test/test_plotting.jl` | not needed | Matplotlib-specific helper not directly exposed. |
 | `dynesty.plotting.plot_thruth` | `plot_truth` | C | planned | `test/test_plotting.jl` | not needed | Name typo kept only if compatibility is useful. |

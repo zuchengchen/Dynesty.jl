@@ -47,3 +47,7 @@ Stage 1 fixtures cover `get_neff_from_logwt`, `apply_reflect`,
 `randsphere`, `rand_choice`, and friends radius helpers.
 The fixture generator is `test/reference/python/generate_reference.py`;
 default tests read JSON files in `test/reference/python/fixtures/`.
+
+Stage 4 internal samplers are tested by invariants and deterministic Julia
+seeds rather than Python same-seed fixtures. The migration does not require
+cross-language trajectory equality for random proposal kernels.
