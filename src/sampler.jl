@@ -7,7 +7,7 @@ const SAMPLE_OPTIONS = (:auto, :unif, :rwalk, :slice, :rslice)
 """
     NestedSampler(loglikelihood, prior_transform, ndim; kwargs...)
 
-Static nested sampler. Public sample arrays in [`results`](@ref) use dynesty's
+Static nested sampler. Public sample arrays returned by `results` use dynesty's
 row-major convention (`nsamples x ndim`), while Julia callables receive
 one-dimensional `Vector{Float64}` inputs.
 """

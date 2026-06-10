@@ -39,10 +39,9 @@ end
 """
     DynamicSampler(loglikelihood, prior_transform, ndim; kwargs...)
 
-Julia-native dynamic nested sampler. The current public implementation runs
-the initial baseline nested-sampling pass and returns dynamic-shaped
-[`Results`](@ref) with batch metadata; adaptive batch allocation is built on
-the same state and batch configuration helpers.
+Julia-native dynamic nested sampler. The sampler runs an initial baseline pass,
+can add adaptive batches, and returns dynamic-shaped [`Results`](@ref) with
+batch metadata.
 """
 mutable struct DynamicSampler{L, P}
     loglikelihood::L

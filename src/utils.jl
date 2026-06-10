@@ -57,8 +57,8 @@ end
     get_print_fn_args(itresult, niter, ncall; ...)
 
 Build backend-neutral progress/status strings from a sampler iteration result.
-The returned [`PrintFnArgs`](@ref) mirrors Python dynesty's short, medium, and
-long status variants.
+The returned `PrintFnArgs` mirrors Python dynesty's short, medium, and long
+status variants.
 """
 function get_print_fn_args(
     itresult,

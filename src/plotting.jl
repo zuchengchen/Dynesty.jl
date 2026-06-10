@@ -59,7 +59,7 @@ end
 """
     Hist2DResult
 
-Data returned by [`_hist2d`](@ref): bin centers, raw/smoothed density, contour
+Data returned by `_hist2d`: bin centers, raw/smoothed density, contour
 thresholds, padded contour grids, and the resolved plotting spans.
 """
 struct Hist2DResult
