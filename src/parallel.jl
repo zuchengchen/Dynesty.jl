@@ -381,6 +381,12 @@ function Base.showerror(io::IO, err::MapTaskError)
         "Dynesty map task failed on backend $(err.backend), task index $(err.index), input $(err.input_context): ",
     )
     showerror(io, err.cause)
+    if err.backend === :distributed
+        print(
+            io,
+            "\nDistributed backend hint: define or load user functions on every worker, ensure captured values are serializable, and start workers with the same project environment.",
+        )
+    end
 end
 
 _input_context(input) = sprint(show, input; context=:limit => true)
@@ -391,6 +397,23 @@ function _run_task(backend::AbstractMapBackend, f, index::Int, input)
     catch err
         throw(MapTaskError(backend_kind(backend), index, _input_context(input), err))
     end
+end
+
+function _unwrap_map_task_error(err)
+    err isa MapTaskError && return err
+    for field in (:ex, :captured)
+        if hasproperty(err, field)
+            unwrapped = _unwrap_map_task_error(getproperty(err, field))
+            !isnothing(unwrapped) && return unwrapped
+        end
+    end
+    if hasproperty(err, :exceptions)
+        for nested in getproperty(err, :exceptions)
+            unwrapped = _unwrap_map_task_error(nested)
+            !isnothing(unwrapped) && return unwrapped
+        end
+    end
+    return nothing
 end
 
 """
@@ -459,7 +482,20 @@ function map_ordered(backend::DistributedMapBackend, f, inputs)
     indexed = collect(enumerate(items))
     runner = pair -> _run_task(backend, f, pair[1], pair[2])
     pool = Distributed.WorkerPool(active_workers)
-    return Distributed.pmap(runner, pool, indexed; batch_size=backend.queue_size)
+    try
+        return Distributed.pmap(runner, pool, indexed; batch_size=backend.queue_size)
+    catch err
+        unwrapped = _unwrap_map_task_error(err)
+        !isnothing(unwrapped) && throw(unwrapped)
+        throw(
+            MapTaskError(
+                backend_kind(backend),
+                0,
+                "distributed map setup/serialization",
+                err,
+            ),
+        )
+    end
 end
 
 function _splitmix64(x::UInt64)

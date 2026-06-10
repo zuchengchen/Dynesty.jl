@@ -147,6 +147,38 @@ proposal tasks are extremely cheap. Compare `proposal_backend_wall_time`,
 between serial execution, a smaller `queue_size`, `proposal_scheduler=:batch`,
 and `proposal_scheduler=:async`.
 
+## Distributed Workers
+
+`DistributedMapBackend` uses Julia workers and `Distributed.pmap`. Start
+workers with the same project, load `Dynesty` on each worker, and make
+likelihood/prior callables available on every worker, usually as top-level
+functions or serializable callable structs. Captured closures can work only
+when all captured values are serializable and available to the worker process.
+
+```julia
+using Distributed
+addprocs(4; exeflags=`--project=$(Base.active_project())`)
+@everywhere using Dynesty
+@everywhere prior_transform(u) = copy(u)
+@everywhere loglikelihood(v) = -sum(abs2, v .- 0.5)
+
+backend = DistributedMapBackend(workers=workers(), queue_size=4)
+sampler = NestedSampler(
+    loglikelihood,
+    prior_transform,
+    2;
+    map_backend=backend,
+)
+```
+
+If configured worker IDs are not live in the current session, ordered maps fall
+back to serial execution. Checkpoints save only worker IDs and backend
+configuration, not worker process objects or pending tasks. Restore a
+distributed checkpoint after creating/loading compatible workers, or replace
+the backend after restore if serial/threaded execution is desired. Distributed
+task errors include the task index, compact input context, and a worker setup
+hint.
+
 Distributed proposal/evolve queue coverage is available as an extended test:
 set `DYNESTY_RUN_DISTRIBUTED_TESTS=true` before running the test suite.
 

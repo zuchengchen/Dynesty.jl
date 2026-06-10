@@ -22,6 +22,7 @@ end
 
 dist_parallel_prior(u) = copy(u)
 dist_parallel_loglike(v) = -sum(abs2, v .- 0.5)
+dist_parallel_fail(v) = error("distributed likelihood marker")
 
 @testset "Map backends" begin
     serial = SerialMapBackend()
@@ -155,6 +156,7 @@ if get(ENV, "DYNESTY_RUN_DISTRIBUTED_TESTS", "false") == "true"
                         using Dynesty
                         dist_parallel_prior(u) = copy(u)
                         dist_parallel_loglike(v) = -sum(abs2, v .- 0.5)
+                        dist_parallel_fail(v) = error("distributed likelihood marker")
                     end,
                 )
             end
@@ -176,6 +178,27 @@ if get(ENV, "DYNESTY_RUN_DISTRIBUTED_TESTS", "false") == "true"
             @test sampler.proposal_tasks_submitted > 0
             @test sampler.proposal_batches_submitted > 0
             @test length(results(sampler).logl) == 3
+
+            err = try
+                NestedSampler(
+                    dist_parallel_fail,
+                    dist_parallel_prior,
+                    2;
+                    nlive=6,
+                    bound=:none,
+                    sample=:unif,
+                    rng=MersenneTwister(921),
+                    map_backend=backend,
+                )
+                nothing
+            catch caught
+                caught
+            end
+            @test err isa MapTaskError
+            @test err.backend == :distributed
+            msg = sprint(showerror, err)
+            @test occursin("distributed likelihood marker", msg)
+            @test occursin("Distributed backend hint", msg)
         finally
             !isempty(added_workers) && Distributed.rmprocs(added_workers)
         end
