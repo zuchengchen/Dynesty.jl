@@ -6,8 +6,8 @@ using Random
 # Julia side of the sampler-level parallel PE comparison.
 #
 # Full run:
-#   OPENBLAS_NUM_THREADS=1 JULIA_NUM_THREADS=4 julia --project=. \
-#     examples/pe_parallel_julia.jl --nlive 1000 --queue-size 4
+#   OPENBLAS_NUM_THREADS=1 julia --threads=31 --project=. \
+#     examples/pe_parallel_julia.jl --nlive 3000 --queue-size 31
 #
 # Quick smoke:
 #   OPENBLAS_NUM_THREADS=1 JULIA_NUM_THREADS=2 julia --project=. \
@@ -97,12 +97,12 @@ end
 function parse_cli(args)
     opts = Dict{Symbol, Any}(
         :output_dir => joinpath(@__DIR__, "output", "pe_parallel_compare"),
-        :nlive => 1000,
+        :nlive => 3000,
         :quick_nlive => 180,
         :dlogz => 0.01,
         :quick_dlogz => 0.5,
         :seed => 20240610,
-        :queue_size => min(max(Threads.nthreads(), 1), 4),
+        :queue_size => min(max(Threads.nthreads(), 1), 31),
         :quick => false,
     )
     i = 1

@@ -3,7 +3,7 @@
 
 Full run:
     OPENBLAS_NUM_THREADS=1 python examples/pe_parallel_python.py \
-        --nlive 1000 --nproc 4 --queue-size 4
+        --nlive 3000 --nproc 31 --queue-size 31
 
 Quick smoke:
     OPENBLAS_NUM_THREADS=1 python examples/pe_parallel_python.py \
@@ -129,13 +129,13 @@ def parse_args(argv: list[str] | None = None) -> argparse.Namespace:
         default=str(ROOT / "examples" / "output" / "pe_parallel_compare"),
     )
     parser.add_argument("--quick", action="store_true")
-    parser.add_argument("--nlive", type=int, default=1000)
+    parser.add_argument("--nlive", type=int, default=3000)
     parser.add_argument("--quick-nlive", type=int, default=180)
     parser.add_argument("--dlogz", type=float, default=0.01)
     parser.add_argument("--quick-dlogz", type=float, default=0.5)
     parser.add_argument("--seed", type=int, default=20240611)
-    parser.add_argument("--nproc", type=int, default=4)
-    parser.add_argument("--queue-size", type=int, default=4)
+    parser.add_argument("--nproc", type=int, default=31)
+    parser.add_argument("--queue-size", type=int, default=31)
     args = parser.parse_args(argv)
     args.nlive_effective = args.quick_nlive if args.quick else args.nlive
     args.dlogz_effective = args.quick_dlogz if args.quick else args.dlogz

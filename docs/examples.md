@@ -35,11 +35,11 @@ python examples/pe_parallel_corner.py --quick
 For denser posterior samples suitable for inspection, use the full settings:
 
 ```bash
-OPENBLAS_NUM_THREADS=1 JULIA_NUM_THREADS=4 julia --project=. \
-    examples/pe_parallel_julia.jl --nlive 1000 --dlogz 0.01 --queue-size 4
+OPENBLAS_NUM_THREADS=1 julia --threads=31 --project=. \
+    examples/pe_parallel_julia.jl --nlive 3000 --dlogz 0.01 --queue-size 31
 OPENBLAS_NUM_THREADS=1 python examples/pe_parallel_python.py \
-    --nlive 1000 --dlogz 0.01 --nproc 4 --queue-size 4
-python examples/pe_parallel_corner.py --nsamples-plot 7000
+    --nlive 3000 --dlogz 0.01 --nproc 31 --queue-size 31
+python examples/pe_parallel_corner.py --nsamples-plot 15000
 ```
 
 Outputs go to `examples/output/pe_parallel_compare/`, which should remain

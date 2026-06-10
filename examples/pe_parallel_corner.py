@@ -167,7 +167,7 @@ def parse_args(argv: list[str] | None = None) -> argparse.Namespace:
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument("--output-dir", default=str(DEFAULT_OUTPUT_DIR))
     parser.add_argument("--quick", action="store_true")
-    parser.add_argument("--nsamples-plot", type=int, default=7000)
+    parser.add_argument("--nsamples-plot", type=int, default=15000)
     parser.add_argument("--quick-nsamples-plot", type=int, default=1200)
     parser.add_argument("--output-png", default=None)
     return parser.parse_args(argv)
