@@ -245,8 +245,8 @@ function sample_tree_memory(root_pid::Integer)
 end
 
 function monitor_memory!(peak::MemoryPeak, root_pid::Integer, proc::Base.Process)
-    while process_running(proc)
-        sample = sample_tree_memory(root_pid)
+    function record_sample!(sample)
+        sample.processes == 0 && return peak
         if sample.rss_kb > peak.peak_rss_kb
             peak.peak_rss_kb = sample.rss_kb
             peak.peak_processes = sample.processes
@@ -258,16 +258,16 @@ function monitor_memory!(peak::MemoryPeak, root_pid::Integer, proc::Base.Process
         else
             peak.pss_available = false
         end
+        return peak
+    end
+
+    while process_running(proc)
+        sample = sample_tree_memory(root_pid)
+        record_sample!(sample)
         sleep(MEMORY_SAMPLE_INTERVAL_SECONDS)
     end
     sample = sample_tree_memory(root_pid)
-    peak.peak_rss_kb = max(peak.peak_rss_kb, sample.rss_kb)
-    if sample.pss_available && !isnothing(sample.pss_kb)
-        peak.peak_pss_kb = isnothing(peak.peak_pss_kb) ? sample.pss_kb :
-                           max(peak.peak_pss_kb, sample.pss_kb)
-    else
-        peak.pss_available = false
-    end
+    record_sample!(sample)
     return peak
 end
 
