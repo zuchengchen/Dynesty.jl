@@ -54,8 +54,8 @@ dres = results(dsampler)
 See the manual pages for runnable workflows and the API pages for exported
 types and functions.
 
-## Migration Status
+## Migration Matrix
 
-The migration is staged and tracked in [`Migration Matrix`](migration_matrix.md).
-Examples are in the repository `examples/` directory and are smoke-tested in
-the default package test suite.
+The completed source migration is tracked in
+[`Migration Matrix`](migration_matrix.md). Examples are in the repository
+`examples/` directory and are smoke-tested in the default package test suite.

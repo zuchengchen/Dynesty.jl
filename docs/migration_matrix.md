@@ -6,7 +6,6 @@ Source snapshot: `../dynesty` commit
 Statuses:
 
 - `implemented`: Julia equivalent exists and has the listed coverage.
-- `planned`: not implemented yet.
 - `replacement`: covered by a Julia-native replacement rather than a direct API.
 - `internal`: implementation detail covered by caller behavior.
 
@@ -35,7 +34,7 @@ Statuses:
 | `dynesty.dynamicsampler.DynamicSamplerStatesEnum` | `DynamicSamplerState` | B | implemented | `test/test_dynamic_sampler.jl` | `test/reference/python/fixtures/dynamic_core.json` | Julia enum replacement with matching state numeric values. |
 | `dynesty.dynamicsampler.compute_weights` | `compute_weights` | A | implemented | `test/test_dynamic_sampler.jl` | `test/reference/python/fixtures/dynamic_core.json` | Dynamic evidence/posterior weighting. |
 | `dynesty.dynamicsampler.weight_function` | `weight_function` | A | implemented | `test/test_dynamic_sampler.jl` | `test/reference/python/fixtures/dynamic_core.json` | Dynamic batch-bound weighting heuristic. |
-| `dynesty.dynamicsampler.stopping_function` | `stopping_function` | A | implemented | `test/test_dynamic_sampler.jl` | `test/reference/python/fixtures/dynamic_core.json` | Default stopping criteria; deterministic fixture covers `n_mc=0`, Monte Carlo branch is checked by Julia invariants later. |
+| `dynesty.dynamicsampler.stopping_function` | `stopping_function` | A | implemented | `test/test_dynamic_sampler.jl` | `test/reference/python/fixtures/dynamic_core.json` | Default stopping criteria; deterministic fixture covers `n_mc=0`, Monte Carlo branch is checked by Julia invariants. |
 | `dynesty.dynamicsampler._configure_batch_sampler` | `_configure_batch_sampler` / `ConfiguredBatchSampler` | B | implemented | `test/test_dynamic_sampler.jl` | not needed | Internal dynamic batch configuration with fresh-prior and saved-sample branches; Julia returns a typed metadata wrapper around `NestedSampler`. |
 | `dynesty.dynamicsampler.DynamicSampler` | `DynamicSampler` | A | implemented | `test/test_dynamic_sampler.jl` | statistical/invariant | Julia-native dynamic sampler state, baseline run engine, adaptive batch scheduling, dynamic result merging, blobs, bounds, and checkpoint restore. |
 | `dynesty.dynamicsampler.DynamicSampler.sample_batch` | `add_batch!` | A | implemented | `test/test_dynamic_sampler.jl` | statistical/invariant | Julia mutating batch API; supports weighted/full/manual log-likelihood bounds using `_configure_batch_sampler` and static sampler execution. |
@@ -45,7 +44,7 @@ Statuses:
 | `dynesty.dynesty._get_enlarge_bootstrap` | `_get_enlarge_bootstrap` | B | implemented | `test/test_static_sampler.jl` | not needed | Bound defaults; explicit ellipsoid bootstrap is supported, while automatic uniform-bound bootstrap still maps to deterministic enlargement. |
 | `dynesty.dynesty._check_first_update` | `_check_first_update` | B | implemented | `test/test_static_sampler.jl` | not needed | First-update validation. |
 | `dynesty.dynesty._get_update_interval_ratio` | `_get_update_interval_ratio` | B | implemented | `test/test_static_sampler.jl` | not needed | Bound update heuristic. |
-| `dynesty.dynesty._assemble_sampler_docstring` | documentation generation | C | replacement | docs build | not needed | Julia docs will be written directly. |
+| `dynesty.dynesty._assemble_sampler_docstring` | documentation generation | C | replacement | docs build | not needed | Julia docs are written directly. |
 | `dynesty.dynesty._common_sampler_init` | `NestedSampler` constructor helpers | B | replacement | `test/test_static_sampler.jl` | not needed | Julia constructor composes wrappers, RNG, bounds, internal sampler, live-point initialization, and update defaults directly. |
 | `dynesty.dynesty._function_wrapper` | callable wrappers | C | replacement | `test/test_static_sampler.jl` | not needed | Julia closures/callable objects replace arg/kwarg wrappers. |
 | `dynesty.internal_samplers.InternalSampler` | `AbstractInternalSampler` | B | implemented | `test/test_internal_samplers.jl` | not needed | Julia abstract interface replacement. |

@@ -76,5 +76,6 @@ realizations and is checked by Julia reproducibility/invariant coverage rather
 than same-seed Python trajectory equality.
 
 Plotting fixtures cover backend-neutral `check_span` and `_hist2d` numerical
-preparation. Full rendered plot smoke tests should remain optional behind
-`DYNESTY_RUN_PLOT_TESTS=true` once Plots.jl-based examples are added.
+preparation. Full rendered plot smoke tests remain optional behind
+`DYNESTY_RUN_PLOT_TESTS=true` so Plots.jl is not part of the default test
+environment.
