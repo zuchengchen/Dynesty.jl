@@ -13,6 +13,21 @@ Performance guidelines:
 - Use scratch buffers and views where safe.
 - Avoid JSON for large arrays.
 
-Benchmarks will live in `benchmark/benchmarks.jl` and will not run as part of
-default `Pkg.test()`.
+Benchmarks live in `benchmark/benchmarks.jl` and are not run as part of default
+`Pkg.test()`.
 
+Run a quick smoke check with:
+
+```sh
+julia --project=benchmark -e 'using Pkg; Pkg.instantiate(); include("benchmark/benchmarks.jl"); main()'
+```
+
+Run the full BenchmarkTools suite with:
+
+```sh
+DYNESTY_RUN_BENCHMARKS=true julia --project=benchmark -e 'using Pkg; Pkg.instantiate(); include("benchmark/benchmarks.jl"); main()'
+```
+
+The suite currently covers a static Gaussian sampler path, a dynamic Gaussian
+sampler path with one adaptive batch, and a `save_results`/`load_results`
+persistence round trip.
