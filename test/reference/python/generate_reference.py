@@ -129,6 +129,25 @@ def main() -> None:
         (True, boot_points, np.random.SeedSequence(97531))
     )
     slogdet_input = np.array([[2.0, 0.3], [0.3, 1.5]])
+    split_points = np.array(
+        [
+            [0.08, 0.12],
+            [0.12, 0.18],
+            [0.18, 0.10],
+            [0.16, 0.22],
+            [0.22, 0.16],
+            [0.10, 0.24],
+            [0.72, 0.76],
+            [0.78, 0.82],
+            [0.84, 0.74],
+            [0.88, 0.86],
+            [0.76, 0.90],
+            [0.92, 0.78],
+        ]
+    )
+    split_first = bounding.bounding_ellipsoid(split_points)
+    split_ells = bounding._bounding_ellipsoids(split_points, split_first)
+    split_multi = bounding.bounding_ellipsoids(split_points)
 
     bounding_fixture = {
         "source": fixture["source"],
@@ -190,6 +209,16 @@ def main() -> None:
             "logvol": float(multi.logvol),
             "logvol_ells": multi.logvol_ells.tolist(),
             "contains": [bool(multi.contains(row)) for row in points],
+        },
+        "recursive_split": {
+            "points": split_points.tolist(),
+            "first_logvol": float(split_first.logvol),
+            "nells": int(split_multi.nells),
+            "logvol": float(split_multi.logvol),
+            "logvol_ells": split_multi.logvol_ells.tolist(),
+            "ctrs": [ell.ctr.tolist() for ell in split_ells],
+            "covs": [ell.cov.tolist() for ell in split_ells],
+            "contains": [bool(split_multi.contains(row)) for row in split_points],
         },
         "rtol": 1e-10,
         "atol": 1e-12,

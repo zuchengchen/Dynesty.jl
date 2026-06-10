@@ -2,6 +2,7 @@ using LinearAlgebra
 using Random
 using Statistics
 
+import Clustering
 import Base: contains
 
 abstract type AbstractBound end
@@ -658,16 +659,67 @@ end
 """
     bounding_ellipsoids(points)
 
-Compute a `MultiEllipsoid` bounding the point set. Stage 2 returns a
-single-ellipsoid union; recursive clustering split support is filled in during
-the extended bounding stages.
+Compute a `MultiEllipsoid` bounding the point set using dynesty's recursive
+two-cluster volume-reduction heuristic.
 """
 function bounding_ellipsoids(points::AbstractMatrix{<:Real})
     ell = bounding_ellipsoid(points)
-    return MultiEllipsoid(size(points, 2); ells=[ell])
+    ells = _bounding_ellipsoids(points, ell)
+    return MultiEllipsoid(size(points, 2); ells)
 end
 
-_bounding_ellipsoids(points::AbstractMatrix{<:Real}, ell::Ellipsoid; scale=nothing) = [ell]
+function _bounding_ellipsoids(points::AbstractMatrix{<:Real}, ell::Ellipsoid; scale=nothing)
+    pts = Matrix{Float64}(points)
+    npoints, ndim = size(pts)
+    ndim == ell.ndim || throw(
+        DimensionMismatch("points second dimension $ndim != ellipsoid ndim $(ell.ndim)")
+    )
+
+    min_size = 2 * ndim
+    npoints < 2 * min_size && return [ell]
+
+    scale_v = if isnothing(scale)
+        vec(std(pts; dims=1, corrected=false))
+    else
+        Float64.(vec(scale))
+    end
+    length(scale_v) == ndim ||
+        throw(DimensionMismatch("scale length $(length(scale_v)) != ndim $ndim"))
+    scale_v = [iszero(s) ? 1.0 : s for s in scale_v]
+    all(isfinite, scale_v) || return [ell]
+
+    p1, p2 = major_axis_endpoints(ell)
+    scaled_points = pts ./ reshape(scale_v, 1, ndim)
+    scaled_centers = hcat(p1 ./ scale_v, p2 ./ scale_v)
+    km = try
+        Clustering.kmeans!(
+            permutedims(scaled_points), copy(scaled_centers); maxiter=10, display=:none
+        )
+    catch
+        return [ell]
+    end
+    labels = km.assignments
+    points_k = [pts[findall(==(k), labels), :] for k in 1:2]
+    if min(size(points_k[1], 1), size(points_k[2], 1)) < min_size
+        return [ell]
+    end
+
+    ells = [bounding_ellipsoid(points_k[k]) for k in 1:2]
+    nparam = (ndim * (ndim + 3)) ÷ 2
+    log_vol_dec = nparam * log(npoints) / npoints
+    out_ells = vcat(
+        _bounding_ellipsoids(points_k[1], ells[1]; scale=scale_v),
+        _bounding_ellipsoids(points_k[2], ells[2]; scale=scale_v),
+    )
+
+    if logsumexp([ells[1].logvol, ells[2].logvol]) - ell.logvol < -log_vol_dec
+        return out_ells
+    end
+    if logsumexp([e.logvol for e in out_ells]) - ell.logvol < -log_vol_dec * (length(out_ells) - 1)
+        return out_ells
+    end
+    return [ell]
+end
 
 function update!(
     multi::MultiEllipsoid,

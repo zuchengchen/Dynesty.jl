@@ -6,6 +6,7 @@ using Statistics
 using Test
 
 matrix_from_json(rows) = reduce(vcat, [reshape(Vector{Float64}(row), 1, :) for row in rows])
+matrices_from_json(blocks) = [matrix_from_json(block) for block in blocks]
 
 @testset "UnitCube bound" begin
     cube = UnitCube(3)
@@ -144,4 +145,39 @@ end
     Dynesty.update!(updated, points; rng=MersenneTwister(12), bootstrap=3)
     @test updated.logvol >= multi.logvol - 1e-12
     @test all(Base.contains(updated, vec(points[i, :])) for i in axes(points, 1))
+end
+
+@testset "Recursive multi-ellipsoid split" begin
+    fixture = JSON3.read(
+        read(
+            joinpath(@__DIR__, "reference", "python", "fixtures", "bounding_core.json"),
+            String,
+        ),
+    )
+    split = fixture["recursive_split"]
+    points = matrix_from_json(split["points"])
+    first = bounding_ellipsoid(points)
+    ells = Dynesty._bounding_ellipsoids(points, first)
+    multi = bounding_ellipsoids(points)
+
+    @test length(ells) == split["nells"]
+    @test multi.nells == split["nells"]
+    @test multi.logvol < first.logvol
+    @test multi.logvol ≈ split["logvol"] rtol = 1e-8 atol = 1e-10
+    @test sort(multi.logvol_ells) ≈ sort(Vector{Float64}(split["logvol_ells"])) rtol = 1e-8 atol =
+        1e-10
+    @test all(Base.contains(multi, vec(points[i, :])) for i in axes(points, 1))
+    @test all(Bool.(split["contains"]))
+
+    expected_ctrs = [Vector{Float64}(ctr) for ctr in split["ctrs"]]
+    matched = falses(length(expected_ctrs))
+    for ell in ells
+        distances = [norm(ell.ctr .- ctr) for ctr in expected_ctrs]
+        idx = argmin(distances)
+        @test !matched[idx]
+        matched[idx] = true
+        @test ell.ctr ≈ expected_ctrs[idx] rtol = 1e-8 atol = 1e-10
+        @test ell.cov ≈ matrices_from_json(split["covs"])[idx] rtol = 1e-8 atol = 1e-10
+    end
+    @test all(matched)
 end

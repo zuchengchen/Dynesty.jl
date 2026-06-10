@@ -22,7 +22,8 @@ Current fixture files:
 
 - `fixtures/utils_core.json`: foundational utilities and evidence integration.
 - `fixtures/bounding_core.json`: UnitCube, Ellipsoid, MultiEllipsoid, and
-  bounding helper cross-checks, including ellipsoid bootstrap metadata.
+  bounding helper cross-checks, including recursive split and ellipsoid
+  bootstrap metadata.
 - `fixtures/friends_core.json`: RadFriends, SupFriends, and friends-radius
   helper cross-checks.
 - `fixtures/results_postprocess.json`: deterministic results post-processing
