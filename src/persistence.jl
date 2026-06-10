@@ -225,6 +225,9 @@ function restore_sampler(
     if checkpoint.state isa AbstractDict &&
         get(checkpoint.state, :type, nothing) === :NestedSampler
         return _restore_nested_sampler(checkpoint.state, loglikelihood, prior_transform)
+    elseif checkpoint.state isa AbstractDict &&
+        get(checkpoint.state, :type, nothing) === :DynamicSampler
+        return _restore_dynamic_sampler(checkpoint.state, loglikelihood, prior_transform)
     else
         return RestoredSampler(
             checkpoint.state,

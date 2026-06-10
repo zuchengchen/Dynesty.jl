@@ -95,6 +95,130 @@ function dynamic_parent_fixture(; rng=MersenneTwister(1234))
     )
 end
 
+@testset "Dynamic sampler base run API" begin
+    sampler = DynamicSampler(
+        dynamic_loglike,
+        dynamic_prior_identity,
+        2;
+        nlive=24,
+        bound=:none,
+        sample=:unif,
+        rng=MersenneTwister(707),
+    )
+    @test sampler isa DynamicSampler
+    @test DynamicNestedSampler(
+        dynamic_loglike,
+        dynamic_prior_identity,
+        2;
+        nlive=8,
+        bound=:none,
+        sample=:unif,
+        rng=MersenneTwister(708),
+    ) isa DynamicSampler
+    @test sampler.internal_state == DynamicSamplerInit
+
+    run_nested!(sampler; maxiter_init=18, dlogz_init=nothing, print_progress=false)
+    @test sampler.internal_state == DynamicSamplerRunDone
+    @test sampler.sampler isa NestedSampler
+    @test sampler.nlive_init == 24
+    @test sampler.batch == 0
+    @test length(sampler.saved_run[:logl]) == 42
+    @test length(sampler.base_run[:logl]) == length(sampler.saved_run[:logl])
+
+    res = results(sampler)
+    @test res isa Results
+    @test Dynesty.isdynamic(res)
+    @test res.niter == length(res.logl)
+    @test size(res.samples) == (length(res.logl), 2)
+    @test size(res.samples_u) == (length(res.logl), 2)
+    @test haskey(res, :samples_n)
+    @test haskey(res, :samples_batch)
+    @test haskey(res, :batch_nlive)
+    @test haskey(res, :batch_logl_bounds)
+    @test all(res.samples_batch .== 0)
+    @test res.batch_nlive == [24]
+    @test res.batch_logl_bounds == reshape([-Inf, Inf], 1, 2)
+    @test res.samples_n[1:18] == fill(24, 18)
+    @test res.samples_n[(end - 3):end] == [4, 3, 2, 1]
+    @test all(isfinite, res.logz)
+    @test all(diff(res.logvol) .< 0)
+    @test all(isfinite, importance_weights(res))
+    @test n_effective(sampler) > 1
+
+    run_nested!(sampler; maxiter_init=5, print_progress=false)
+    @test length(results(sampler).logl) == length(res.logl)
+
+    alias_sampler = DynamicSampler(
+        dynamic_loglike,
+        dynamic_prior_identity,
+        2;
+        nlive=10,
+        bound=:none,
+        sample=:unif,
+        rng=MersenneTwister(709),
+    )
+    returned = run_nested(
+        alias_sampler; maxiter_init=4, dlogz_init=nothing, print_progress=false
+    )
+    @test returned === alias_sampler
+    @test Dynesty.isdynamic(results(alias_sampler))
+end
+
+@testset "Dynamic sampler blobs and checkpoint restore" begin
+    blob_loglike(v) = (dynamic_loglike(v), (radius=sum(abs, v .- 0.5), first=v[1]))
+    sampler = DynamicSampler(
+        blob_loglike,
+        dynamic_prior_identity,
+        2;
+        nlive=16,
+        bound=:single,
+        sample=:unif,
+        rng=MersenneTwister(717),
+        blob=true,
+    )
+    run_nested!(sampler; maxiter_init=6, dlogz_init=nothing, print_progress=false)
+    res = results(sampler)
+    @test haskey(res, :blobs)
+    @test length(res.blobs) == length(res.logl)
+    @test res.blobs[1].first isa Float64
+    @test haskey(res, :bound)
+    @test haskey(res, :samples_bound)
+    @test haskey(res, :scale)
+
+    mktempdir() do dir
+        path = joinpath(dir, "dynamic_sampler.jls")
+        checkpoint!(sampler, path)
+        restored = restore_sampler(
+            path; loglikelihood=blob_loglike, prior_transform=dynamic_prior_identity
+        )
+        @test restored isa DynamicSampler
+        @test restored.internal_state == DynamicSamplerRunDone
+        @test restored.sampler isa NestedSampler
+        restored_res = results(restored)
+        @test Dynesty.isdynamic(restored_res)
+        @test restored_res.logl == res.logl
+        @test restored_res.samples_n == res.samples_n
+        @test restored_res.batch_logl_bounds == res.batch_logl_bounds
+        @test n_effective(restored) ≈ n_effective(sampler)
+    end
+end
+
+@testset "Dynamic sampler adaptive batch guard" begin
+    sampler = DynamicSampler(
+        dynamic_loglike,
+        dynamic_prior_identity,
+        2;
+        nlive=10,
+        bound=:none,
+        sample=:unif,
+        rng=MersenneTwister(727),
+    )
+    @test_throws ArgumentError run_nested!(
+        sampler; maxiter_init=3, nlive_batch=10, print_progress=false
+    )
+    @test sampler.internal_state == DynamicSamplerInit
+end
+
 @testset "Dynamic sampler weighting fixtures" begin
     fixture_path = joinpath(
         @__DIR__, "reference", "python", "fixtures", "dynamic_core.json"

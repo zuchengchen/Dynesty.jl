@@ -36,6 +36,191 @@ struct ConfiguredBatchSampler{S}
     join_index::Int
 end
 
+"""
+    DynamicSampler(loglikelihood, prior_transform, ndim; kwargs...)
+
+Julia-native dynamic nested sampler. The current public implementation runs
+the initial baseline nested-sampling pass and returns dynamic-shaped
+[`Results`](@ref) with batch metadata; adaptive batch allocation is built on
+the same state and batch configuration helpers.
+"""
+mutable struct DynamicSampler{L, P}
+    loglikelihood::L
+    prior_transform::P
+    ndim::Int
+    ncdim::Int
+    blob::Bool
+    copy_inputs::Bool
+    bounding::Any
+    sampling::Any
+    bound_update_interval_ratio::Float64
+    first_bound_update::Dict{Symbol, Any}
+    rng::AbstractRNG
+    periodic::Any
+    reflective::Any
+    walks::Any
+    slices::Any
+    facc::Float64
+    nlive0::Int
+    bound_enlarge::Any
+    bound_bootstrap::Any
+    sampler::Any
+    saved_run::RunRecord
+    base_run::RunRecord
+    new_run::Any
+    batch::Int
+    it::Int
+    ncall::Int
+    eff::Float64
+    bound_list::Vector{Any}
+    internal_state::DynamicSamplerState
+    live_u::Any
+    live_v::Any
+    live_logl::Any
+    live_blobs::Any
+    live_bound::Any
+    live_it::Any
+    live_init::Any
+    nlive_init::Any
+    batch_sampler::Any
+    new_logl_min::Float64
+    new_logl_max::Float64
+end
+
+function DynamicSampler(
+    loglikelihood,
+    prior_transform,
+    ndim::Integer;
+    nlive::Integer=500,
+    nlive0=nothing,
+    bound=:multi,
+    sample=:auto,
+    bounding=nothing,
+    sampling=nothing,
+    periodic=nothing,
+    reflective=nothing,
+    update_interval=nothing,
+    bound_update_interval_ratio=nothing,
+    first_update=nothing,
+    first_bound_update=nothing,
+    rng=nothing,
+    rstate=nothing,
+    enlarge=nothing,
+    bootstrap=nothing,
+    bound_enlarge=nothing,
+    bound_bootstrap=nothing,
+    walks=nothing,
+    facc::Real=0.5,
+    slices=nothing,
+    ncdim=nothing,
+    blob::Bool=false,
+    copy_inputs::Bool=false,
+    kwargs...,
+)
+    isempty(kwargs) || throw(
+        ArgumentError("unsupported DynamicSampler keyword(s): $(collect(keys(kwargs)))")
+    )
+    ndim_i = Int(ndim)
+    ndim_i > 0 || throw(ArgumentError("ndim must be positive; got $ndim"))
+    nlive_i = isnothing(nlive0) ? Int(nlive) : Int(nlive0)
+    nlive_i > 0 || throw(ArgumentError("nlive must be positive; got $nlive_i"))
+    ncdim_i = isnothing(ncdim) ? ndim_i : Int(ncdim)
+    1 <= ncdim_i <= ndim_i ||
+        throw(ArgumentError("ncdim must be between 1 and ndim; got $ncdim_i"))
+    if !isnothing(rng) && !isnothing(rstate)
+        throw(ArgumentError("specify either rng or rstate, not both"))
+    end
+    rng_obj = if !isnothing(rng)
+        rng
+    elseif !isnothing(rstate)
+        rstate
+    else
+        Random.default_rng()
+    end
+    rng_obj isa AbstractRNG || throw(ArgumentError("rng/rstate must be an AbstractRNG"))
+
+    sampling_v = isnothing(sampling) ? sample : sampling
+    bounding_v = isnothing(bounding) ? bound : bounding
+    first_update_v = if isnothing(first_update)
+        first_bound_update
+    else
+        first_update
+    end
+    first_update_d = if isnothing(first_update_v)
+        Dict{Symbol, Any}()
+    else
+        _check_first_update(first_update_v)
+    end
+    bound_enlarge_v = isnothing(bound_enlarge) ? enlarge : bound_enlarge
+    bound_bootstrap_v = isnothing(bound_bootstrap) ? bootstrap : bound_bootstrap
+    facc_f = Float64(facc)
+
+    interval_ratio = if isnothing(bound_update_interval_ratio)
+        internal_sampler = _get_internal_sampler(
+            sampling_v,
+            ndim_i,
+            ncdim_i;
+            periodic,
+            reflective,
+            walks,
+            slices,
+            facc=facc_f,
+        )
+        _get_update_interval_ratio(update_interval, internal_sampler, nlive_i)
+    else
+        ratio = Float64(bound_update_interval_ratio)
+        ratio > 0 ||
+            throw(ArgumentError("bound_update_interval_ratio must be positive"))
+        ratio
+    end
+    interval_ratio = Float64(interval_ratio)
+
+    return DynamicSampler(
+        loglikelihood,
+        prior_transform,
+        ndim_i,
+        ncdim_i,
+        blob,
+        copy_inputs,
+        bounding_v,
+        sampling_v,
+        interval_ratio,
+        first_update_d,
+        rng_obj,
+        periodic,
+        reflective,
+        walks,
+        slices,
+        facc_f,
+        nlive_i,
+        bound_enlarge_v,
+        bound_bootstrap_v,
+        nothing,
+        RunRecord(; dynamic=true),
+        RunRecord(; dynamic=true),
+        nothing,
+        0,
+        1,
+        0,
+        1.0,
+        Any[],
+        DynamicSamplerInit,
+        nothing,
+        nothing,
+        nothing,
+        nothing,
+        nothing,
+        nothing,
+        nothing,
+        nothing,
+        nothing,
+        -Inf,
+        Inf,
+    )
+end
+
+const DynamicNestedSampler = DynamicSampler
+
 function _dynamic_arg(args, key::Symbol, default)
     isnothing(args) && return default
     if args isa AbstractDict
@@ -631,4 +816,393 @@ function _dynamic_truncate_saved_run!(target::RunRecord, source, join_index::Int
         target[key] = Any[source_values[1:min(join_index, length(source_values))]...]
     end
     return target
+end
+
+function _dynamic_update_interval(sampler::DynamicSampler, update_interval, nlive::Int)
+    if isnothing(update_interval)
+        return max(1, round(Int, sampler.bound_update_interval_ratio * nlive))
+    elseif update_interval isa Integer
+        update_interval > 0 || throw(ArgumentError("update_interval must be positive"))
+        return Int(update_interval)
+    elseif update_interval isa AbstractFloat
+        update_interval > 0 || throw(ArgumentError("update_interval must be positive"))
+        return max(1, round(Int, Float64(update_interval) * nlive))
+    else
+        throw(ArgumentError("update_interval must be nothing, integer, or float"))
+    end
+end
+
+function _dynamic_batch_bounds_matrix(bounds)
+    nbounds = length(bounds)
+    out = Matrix{Float64}(undef, nbounds, 2)
+    for (i, bound) in enumerate(bounds)
+        vals = Float64.(collect(bound))
+        length(vals) == 2 ||
+            throw(ArgumentError("batch_logl_bounds entries must have length 2"))
+        out[i, :] .= vals
+    end
+    return out
+end
+
+function _dynamic_run_from_nested(
+    sampler::NestedSampler,
+    samples_n::AbstractVector{<:Integer};
+    batch_id::Integer=0,
+    batch_nlive::Integer=sampler.nlive,
+    batch_logl_bounds=(-Inf, Inf),
+)
+    record = sampler.saved_run
+    n = length(record[:logl])
+    length(samples_n) == n ||
+        throw(DimensionMismatch("samples_n length $(length(samples_n)) != run length $n"))
+    dyn = RunRecord(; dynamic=true)
+    for i in 1:n
+        for key in RUN_RECORD_KEYS
+            value = key === :n ? Int(samples_n[i]) : record[key][i]
+            push!(dyn[key], value)
+        end
+        push!(dyn[:batch], Int(batch_id))
+    end
+    push!(dyn[:batch_nlive], Int(batch_nlive))
+    push!(
+        dyn[:batch_logl_bounds],
+        (Float64(batch_logl_bounds[1]), Float64(batch_logl_bounds[2])),
+    )
+    return dyn
+end
+
+function _dynamic_live_snapshot(static_sampler::NestedSampler)
+    live_blobs = static_sampler.blob ? copy(static_sampler.live_blobs) : nothing
+    return (
+        copy(static_sampler.live_u),
+        copy(static_sampler.live_v),
+        copy(static_sampler.live_logl),
+        live_blobs,
+    )
+end
+
+function _dynamic_adaptive_requested(kwargs)
+    for key in (
+        :nlive_batch,
+        :wt_function,
+        :wt_kwargs,
+        :maxiter_batch,
+        :maxcall_batch,
+        :n_effective,
+        :stop_function,
+        :stop_kwargs,
+    )
+        !isnothing(kwargs[key]) && return true
+    end
+    maxbatch = kwargs[:maxbatch]
+    !isnothing(maxbatch) && Int(maxbatch) > 0 && return true
+    kwargs[:use_stop] === false && return true
+    return false
+end
+
+function _dynamic_effective_limit(init_limit, global_limit)
+    if isnothing(init_limit)
+        return global_limit
+    elseif isnothing(global_limit)
+        return init_limit
+    else
+        return min(Int(init_limit), Int(global_limit))
+    end
+end
+
+function run_nested!(
+    sampler::DynamicSampler;
+    nlive_init=nothing,
+    update_interval=nothing,
+    first_update=nothing,
+    maxiter_init=nothing,
+    maxcall_init=nothing,
+    dlogz_init=0.01,
+    logl_max_init::Real=Inf,
+    nlive_batch=nothing,
+    wt_function=nothing,
+    wt_kwargs=nothing,
+    maxiter_batch=nothing,
+    maxcall_batch=nothing,
+    maxiter=nothing,
+    maxcall=nothing,
+    maxbatch=nothing,
+    n_effective=nothing,
+    stop_function=nothing,
+    stop_kwargs=nothing,
+    use_stop::Bool=true,
+    save_bounds::Bool=true,
+    print_progress::Bool=false,
+    print_func=nothing,
+    live_points=nothing,
+    resume::Bool=false,
+    checkpoint_file=nothing,
+    checkpoint_every=nothing,
+    add_live::Bool=true,
+    kwargs...,
+)
+    isempty(kwargs) ||
+        throw(ArgumentError("unsupported run_nested! keyword(s): $(collect(keys(kwargs)))"))
+    adaptive_kwargs = (;
+        nlive_batch,
+        wt_function,
+        wt_kwargs,
+        maxiter_batch,
+        maxcall_batch,
+        maxbatch,
+        n_effective,
+        stop_function,
+        stop_kwargs,
+        use_stop,
+    )
+    if _dynamic_adaptive_requested(adaptive_kwargs)
+        throw(
+            ArgumentError(
+                "adaptive dynamic batches are not implemented by run_nested! yet; use the baseline dynamic run API or _configure_batch_sampler",
+            ),
+        )
+    end
+    if resume && sampler.internal_state != DynamicSamplerInit
+        throw(ArgumentError("resume is not implemented for DynamicSampler baseline runs"))
+    elseif !resume && sampler.internal_state != DynamicSamplerInit
+        sampler.internal_state == DynamicSamplerRunDone && return sampler
+        throw(
+            ArgumentError(
+                "run_nested! can start only from DynamicSamplerInit or an already completed run",
+            ),
+        )
+    end
+    _ = checkpoint_every
+
+    nlive_i = isnothing(nlive_init) ? sampler.nlive0 : Int(nlive_init)
+    nlive_i > 0 || throw(ArgumentError("nlive_init must be positive; got $nlive_i"))
+    update_interval_i = _dynamic_update_interval(sampler, update_interval, nlive_i)
+    first_update_d = if isnothing(first_update)
+        sampler.first_bound_update
+    else
+        _check_first_update(first_update)
+    end
+    maxiter_i = _dynamic_effective_limit(maxiter_init, maxiter)
+    maxcall_i = _dynamic_effective_limit(maxcall_init, maxcall)
+
+    static_sampler = NestedSampler(
+        sampler.loglikelihood,
+        sampler.prior_transform,
+        sampler.ndim;
+        nlive=nlive_i,
+        bound=sampler.bounding,
+        sample=sampler.sampling,
+        periodic=sampler.periodic,
+        reflective=sampler.reflective,
+        update_interval=update_interval_i,
+        first_update=first_update_d,
+        rng=sampler.rng,
+        live_points,
+        enlarge=sampler.bound_enlarge,
+        bootstrap=sampler.bound_bootstrap,
+        walks=sampler.walks,
+        facc=sampler.facc,
+        slices=sampler.slices,
+        ncdim=sampler.ncdim,
+        blob=sampler.blob,
+        copy_inputs=sampler.copy_inputs,
+    )
+    sampler.sampler = static_sampler
+    sampler.nlive_init = static_sampler.nlive
+    sampler.live_init = _dynamic_live_snapshot(static_sampler)
+    sampler.live_u = copy(static_sampler.live_u)
+    sampler.live_v = copy(static_sampler.live_v)
+    sampler.live_logl = copy(static_sampler.live_logl)
+    sampler.live_blobs = static_sampler.blob ? copy(static_sampler.live_blobs) : nothing
+    sampler.live_bound = copy(static_sampler.live_bound)
+    sampler.live_it = copy(static_sampler.live_it)
+    sampler.ncall = static_sampler.ncall
+    sampler.bound_list = static_sampler.bound_list
+    sampler.internal_state = DynamicSamplerLivePointsInit
+
+    sampler.internal_state = DynamicSamplerInBase
+    run_nested!(
+        static_sampler;
+        maxiter=maxiter_i,
+        maxcall=maxcall_i,
+        dlogz=dlogz_init,
+        logl_max=logl_max_init,
+        add_live,
+        save_bounds,
+        print_progress,
+        print_func,
+    )
+    add_live && (sampler.internal_state = DynamicSamplerInBaseAddLive)
+
+    static_results = results(static_sampler)
+    samples_n = _static_samples_n(static_results)
+    sampler.base_run = _dynamic_run_from_nested(
+        static_sampler,
+        samples_n;
+        batch_id=0,
+        batch_nlive=static_sampler.nlive,
+        batch_logl_bounds=(-Inf, Inf),
+    )
+    sampler.saved_run = _dynamic_run_from_nested(
+        static_sampler,
+        samples_n;
+        batch_id=0,
+        batch_nlive=static_sampler.nlive,
+        batch_logl_bounds=(-Inf, Inf),
+    )
+    sampler.batch = 0
+    sampler.it = length(sampler.saved_run[:logl]) + 1
+    sampler.ncall = static_sampler.ncall
+    sampler.eff = static_sampler.eff
+    sampler.bound_list = static_sampler.bound_list
+    sampler.live_u = copy(static_sampler.live_u)
+    sampler.live_v = copy(static_sampler.live_v)
+    sampler.live_logl = copy(static_sampler.live_logl)
+    sampler.live_blobs = static_sampler.blob ? copy(static_sampler.live_blobs) : nothing
+    sampler.live_bound = copy(static_sampler.live_bound)
+    sampler.live_it = copy(static_sampler.live_it)
+    sampler.internal_state = DynamicSamplerRunDone
+    !isnothing(checkpoint_file) && checkpoint!(sampler, checkpoint_file)
+    return sampler
+end
+
+run_nested(sampler::DynamicSampler; kwargs...) = run_nested!(sampler; kwargs...)
+
+function results(sampler::DynamicSampler)
+    record = sampler.saved_run
+    samples_u = _matrix_from_record(record, :u, sampler.ndim)
+    samples_v = _matrix_from_record(record, :v, sampler.ndim)
+    logzvar = Float64.(record[:logzvar])
+    data = Any[
+        :niter => max(sampler.it - 1, 0),
+        :ncall => Int.(record[:nc]),
+        :eff => sampler.eff,
+        :samples => samples_v,
+        :samples_u => samples_u,
+        :samples_id => Int.(record[:id]),
+        :samples_it => Int.(record[:it]),
+        :samples_n => Int.(record[:n]),
+        :samples_batch => Int.(record[:batch]),
+        :logl => Float64.(record[:logl]),
+        :logvol => Float64.(record[:logvol]),
+        :logwt => Float64.(record[:logwt]),
+        :logz => Float64.(record[:logz]),
+        :logzvar => logzvar,
+        :logzerr => sqrt.(max.(logzvar, 0.0)),
+        :h => Float64.(record[:h]),
+        :information => Float64.(record[:h]),
+        :batch_nlive => Int.(record[:batch_nlive]),
+        :batch_logl_bounds => _dynamic_batch_bounds_matrix(record[:batch_logl_bounds]),
+        :proposal_stats => copy(record[:proposal_stats]),
+    ]
+    sampler.blob && push!(data, :blobs => copy(record[:blobs]))
+    if !isnothing(sampler.sampler) && sampler.sampler.save_bounds
+        push!(data, :bound => deepcopy(sampler.bound_list))
+        push!(data, :bound_iter => Int.(record[:bounditer]))
+        push!(data, :boundidx => Int.(record[:boundidx]))
+        push!(data, :scale => Float64.(record[:scale]))
+    end
+    return Results(data)
+end
+
+function n_effective(sampler::DynamicSampler)
+    isempty(sampler.saved_run[:logwt]) && return 0.0
+    logwt = Float64.(sampler.saved_run[:logwt])
+    all(isinf, logwt) && return 0.0
+    return get_neff_from_logwt(logwt)
+end
+
+function sampler_snapshot(sampler::DynamicSampler)
+    return Dict{Symbol, Any}(
+        :type => :DynamicSampler,
+        :ndim => sampler.ndim,
+        :ncdim => sampler.ncdim,
+        :blob => sampler.blob,
+        :copy_inputs => sampler.copy_inputs,
+        :bounding => sampler.bounding,
+        :sampling => sampler.sampling,
+        :bound_update_interval_ratio => sampler.bound_update_interval_ratio,
+        :first_bound_update => sampler.first_bound_update,
+        :rng => sampler.rng,
+        :periodic => sampler.periodic,
+        :reflective => sampler.reflective,
+        :walks => sampler.walks,
+        :slices => sampler.slices,
+        :facc => sampler.facc,
+        :nlive0 => sampler.nlive0,
+        :bound_enlarge => sampler.bound_enlarge,
+        :bound_bootstrap => sampler.bound_bootstrap,
+        :sampler =>
+            isnothing(sampler.sampler) ? nothing : sampler_snapshot(sampler.sampler),
+        :saved_run => sampler.saved_run,
+        :base_run => sampler.base_run,
+        :new_run => sampler.new_run,
+        :batch => sampler.batch,
+        :it => sampler.it,
+        :ncall => sampler.ncall,
+        :eff => sampler.eff,
+        :bound_list => sampler.bound_list,
+        :internal_state => sampler.internal_state,
+        :live_u => sampler.live_u,
+        :live_v => sampler.live_v,
+        :live_logl => sampler.live_logl,
+        :live_blobs => sampler.live_blobs,
+        :live_bound => sampler.live_bound,
+        :live_it => sampler.live_it,
+        :live_init => sampler.live_init,
+        :nlive_init => sampler.nlive_init,
+        :batch_sampler => sampler.batch_sampler,
+        :new_logl_min => sampler.new_logl_min,
+        :new_logl_max => sampler.new_logl_max,
+    )
+end
+
+function _restore_dynamic_sampler(state::AbstractDict, loglikelihood, prior_transform)
+    sampler = DynamicSampler(
+        loglikelihood,
+        prior_transform,
+        Int(state[:ndim]);
+        nlive=Int(state[:nlive0]),
+        bound=state[:bounding],
+        sample=state[:sampling],
+        periodic=state[:periodic],
+        reflective=state[:reflective],
+        bound_update_interval_ratio=Float64(state[:bound_update_interval_ratio]),
+        first_update=state[:first_bound_update],
+        rng=state[:rng],
+        enlarge=state[:bound_enlarge],
+        bootstrap=state[:bound_bootstrap],
+        walks=state[:walks],
+        facc=Float64(state[:facc]),
+        slices=state[:slices],
+        ncdim=Int(state[:ncdim]),
+        blob=Bool(state[:blob]),
+        copy_inputs=Bool(state[:copy_inputs]),
+    )
+    sampler.sampler = if isnothing(state[:sampler])
+        nothing
+    else
+        _restore_nested_sampler(state[:sampler], loglikelihood, prior_transform)
+    end
+    sampler.saved_run = state[:saved_run]
+    sampler.base_run = state[:base_run]
+    sampler.new_run = state[:new_run]
+    sampler.batch = Int(state[:batch])
+    sampler.it = Int(state[:it])
+    sampler.ncall = Int(state[:ncall])
+    sampler.eff = Float64(state[:eff])
+    sampler.bound_list = Vector{Any}(state[:bound_list])
+    sampler.internal_state = state[:internal_state]
+    sampler.live_u = state[:live_u]
+    sampler.live_v = state[:live_v]
+    sampler.live_logl = state[:live_logl]
+    sampler.live_blobs = state[:live_blobs]
+    sampler.live_bound = state[:live_bound]
+    sampler.live_it = state[:live_it]
+    sampler.live_init = state[:live_init]
+    sampler.nlive_init = state[:nlive_init]
+    sampler.batch_sampler = state[:batch_sampler]
+    sampler.new_logl_min = Float64(state[:new_logl_min])
+    sampler.new_logl_max = Float64(state[:new_logl_max])
+    return sampler
 end

@@ -2,6 +2,8 @@ module Dynesty
 
 export DelayTimer,
     DistributedMapBackend,
+    DynamicNestedSampler,
+    DynamicSampler,
     DynamicSamplerBaseDone,
     DynamicSamplerBatchDone,
     DynamicSamplerInBase,
