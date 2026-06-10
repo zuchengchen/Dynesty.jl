@@ -10,6 +10,11 @@ const SAMPLE_OPTIONS = (:auto, :unif, :rwalk, :slice, :rslice)
 Static nested sampler. Public sample arrays returned by `results` use dynesty's
 row-major convention (`nsamples x ndim`), while Julia callables receive
 one-dimensional `Vector{Float64}` inputs.
+
+Sampler-level parallel configuration is available with `parallel`,
+`map_backend`, and `queue_size`. The backend is used for initial live-point
+prior-transform and likelihood evaluation; proposal kernels in `run_nested!`
+currently use the serial internal sampler path.
 """
 mutable struct NestedSampler{L, P}
     loglikelihood::L
@@ -20,6 +25,7 @@ mutable struct NestedSampler{L, P}
     blob::Bool
     copy_inputs::Bool
     rng::AbstractRNG
+    map_backend::AbstractMapBackend
     bound_kind::Symbol
     sample_kind::Symbol
     bound::AbstractBound
@@ -249,6 +255,14 @@ function _call_loglikelihood(loglikelihood, v; blob::Bool=false, copy_inputs::Bo
     return out
 end
 
+function _evaluate_live_point(
+    prior_transform, loglikelihood, u, ndim::Int; blob::Bool=false, copy_inputs::Bool=false
+)
+    v = _call_prior_transform(prior_transform, u, ndim; copy_inputs)
+    out = _call_loglikelihood(loglikelihood, v; blob, copy_inputs)
+    return (v, out.logl, out.blob)
+end
+
 function _initialize_live_points(
     live_points,
     prior_transform,
@@ -256,6 +270,7 @@ function _initialize_live_points(
     nlive::Integer,
     ndim::Integer,
     rng::AbstractRNG=Random.default_rng(),
+    map_backend::AbstractMapBackend=SerialMapBackend(),
     blob::Bool=false,
     copy_inputs::Bool=false,
 )
@@ -280,13 +295,40 @@ function _initialize_live_points(
             cur_v = zeros(Float64, nlive_i, ndim_i)
             cur_logl = zeros(Float64, nlive_i)
             cur_blobs = blob ? Vector{Any}(undef, nlive_i) : nothing
-            for i in 1:nlive_i
-                u = vec(cur_u[i, :])
-                v = _call_prior_transform(prior_transform, u, ndim_i; copy_inputs)
-                out = _call_loglikelihood(loglikelihood, v; blob, copy_inputs)
-                cur_v[i, :] .= v
-                cur_logl[i] = out.logl
-                blob && (cur_blobs[i] = out.blob)
+            if map_backend isa SerialMapBackend
+                for i in 1:nlive_i
+                    u = vec(cur_u[i, :])
+                    v, logl, out_blob = _evaluate_live_point(
+                        prior_transform, loglikelihood, u, ndim_i; blob, copy_inputs
+                    )
+                    cur_v[i, :] .= v
+                    cur_logl[i] = logl
+                    blob && (cur_blobs[i] = out_blob)
+                end
+            else
+                inputs = [(i, vec(cur_u[i, :])) for i in 1:nlive_i]
+                mapped = map_ordered(
+                    map_backend,
+                    input -> begin
+                        i, u = input
+                        v, logl, out_blob = _evaluate_live_point(
+                            prior_transform,
+                            loglikelihood,
+                            u,
+                            ndim_i;
+                            blob,
+                            copy_inputs,
+                        )
+                        return (i, v, logl, out_blob)
+                    end,
+                    inputs,
+                )
+                for item in mapped
+                    i, v, logl, out_blob = item
+                    cur_v[i, :] .= v
+                    cur_logl[i] = logl
+                    blob && (cur_blobs[i] = out_blob)
+                end
             end
             ncalls += nlive_i
             finite = isfinite.(cur_logl)
@@ -385,6 +427,9 @@ function NestedSampler(
     first_update=nothing,
     rng=nothing,
     rstate=nothing,
+    parallel=:serial,
+    map_backend=nothing,
+    queue_size=nothing,
     live_points=nothing,
     enlarge=nothing,
     bootstrap=nothing,
@@ -417,6 +462,7 @@ function NestedSampler(
         Random.default_rng()
     end
     rng_obj isa AbstractRNG || throw(ArgumentError("rng/rstate must be an AbstractRNG"))
+    backend = _get_map_backend(parallel, map_backend, queue_size)
     first_update_d =
         isnothing(first_update) ? Dict{Symbol, Any}() : _check_first_update(first_update)
 
@@ -445,6 +491,7 @@ function NestedSampler(
         nlive=nlive_i,
         ndim=ndim_i,
         rng=rng_obj,
+        map_backend=backend,
         blob,
         copy_inputs,
     )
@@ -460,6 +507,7 @@ function NestedSampler(
         blob,
         copy_inputs,
         rng_obj,
+        backend,
         bound_kind,
         sample_kind,
         bound_current,
@@ -1009,6 +1057,7 @@ function sampler_snapshot(sampler::NestedSampler)
         :blob => sampler.blob,
         :copy_inputs => sampler.copy_inputs,
         :rng => sampler.rng,
+        :map_backend_config => _backend_config(sampler.map_backend),
         :bound_kind => sampler.bound_kind,
         :sample_kind => sampler.sample_kind,
         :bound => sampler.bound,
@@ -1056,6 +1105,7 @@ function _restore_nested_sampler(state::AbstractDict, loglikelihood, prior_trans
         Bool(state[:blob]),
         Bool(state[:copy_inputs]),
         state[:rng],
+        _map_backend_from_config(get(state, :map_backend_config, nothing)),
         Symbol(state[:bound_kind]),
         Symbol(state[:sample_kind]),
         state[:bound],

@@ -11,7 +11,7 @@ Statuses:
 
 | Python symbol | Julia symbol | Grade | Status | Julia test file | Python fixture file | Notes |
 | --- | --- | --- | --- | --- | --- | --- |
-| `dynesty.NestedSampler` | `NestedSampler` | A | implemented | `test/test_static_sampler.jl` | statistical/invariant | Public static sampler API with Julia-native mutating `run_nested!`, result extraction, blobs, bounds, checkpoint restore, and progress callback plumbing. |
+| `dynesty.NestedSampler` | `NestedSampler` | A | implemented | `test/test_static_sampler.jl` | statistical/invariant | Public static sampler API with Julia-native mutating `run_nested!`, result extraction, blobs, bounds, checkpoint restore, progress callback plumbing, and sampler-level `parallel`/`map_backend`/`queue_size` for initial live-point evaluation. |
 | `dynesty.DynamicNestedSampler` | `DynamicNestedSampler` | A | implemented | `test/test_dynamic_sampler.jl` | statistical/invariant | Public constructor alias for `DynamicSampler`; baseline and adaptive dynamic runs, dynamic-shaped results, blobs, saved bounds, and checkpoint restore are covered. |
 | `dynesty.bounding.Bound` | `AbstractBound` | B | replacement | `test/test_bounding_unitcube_ellipsoid.jl` | not needed | Julia abstract bound interface replacement; concrete bounds subtype `AbstractBound` and sampler factories accept the abstract interface. |
 | `dynesty.bounding.UnitCube` | `UnitCube` | A | implemented | `test/test_bounding_unitcube_ellipsoid.jl` | `test/reference/python/fixtures/bounding_core.json` | Unit-cube bound. |
@@ -73,7 +73,7 @@ Statuses:
 | `dynesty.pool.initializer` | backend initialization | C | replacement | `test/test_parallel.jl` | not needed | Julia backend setup. |
 | `dynesty.pool.loglike_cache` | backend task closure | C | replacement | `test/test_parallel.jl` | not needed | Julia closures replace global cache. |
 | `dynesty.pool.prior_transform_cache` | backend task closure | C | replacement | `test/test_parallel.jl` | not needed | Julia closures replace global cache. |
-| `dynesty.pool.Pool` | `SerialMapBackend` / `ThreadedMapBackend` / `DistributedMapBackend` | A | implemented | `test/test_parallel.jl` | not needed | Ordered Julia-native map replacement with queue controls; Python Pool shape intentionally replaced. |
+| `dynesty.pool.Pool` | `SerialMapBackend` / `ThreadedMapBackend` / `DistributedMapBackend` / `NestedSampler(...; parallel, map_backend, queue_size)` | A | replacement | `test/test_parallel.jl`, `test/test_static_sampler.jl` | not needed | Ordered Julia-native map replacement with queue controls and sampler-level configuration; Python Pool shape intentionally replaced. |
 | `dynesty.sampler._get_bound` | `_get_bound` | B | implemented | `test/test_static_sampler.jl` | not needed | Bound factory. |
 | `dynesty.sampler._initialize_live_points` | `_initialize_live_points` | A | implemented | `test/test_static_sampler.jl` | statistical/invariant | Live point initialization with Real, tuple/blob, and `LoglOutput` normalization. |
 | `dynesty.sampler.Sampler` | `NestedSampler` internals | A | implemented | `test/test_static_sampler.jl` | statistical/invariant | Static sampler engine including run loop, final live points, result conversion, bound updates, blobs, and checkpoint restore. |
@@ -114,4 +114,4 @@ Statuses:
 | `dynesty.utils._kld_error` | `_kld_error` | B | implemented | `test/test_results_postprocess.jl` | statistical/invariant | Map-friendly KLD helper. |
 | `dynesty.utils.restore_sampler` | `restore_sampler` | A | implemented | `test/test_persistence.jl` | not needed | Julia Serialization checkpoint restore; requires user functions again. |
 | `dynesty.utils.save_sampler` | `save_sampler` / `checkpoint!` | A | implemented | `test/test_persistence.jl` | not needed | Julia Serialization checkpoint save. |
-| `dynesty.utils._parse_pool_queue` | `_normalize_queue_size` | B | implemented | `test/test_parallel.jl` | not needed | Julia backend queue parsing. |
+| `dynesty.utils._parse_pool_queue` | `_normalize_queue_size` / `_get_map_backend` | B | replacement | `test/test_parallel.jl`, `test/test_static_sampler.jl` | not needed | Julia backend and queue parsing for low-level maps and `NestedSampler` constructor keywords; explicit `map_backend` plus `queue_size` raises `ArgumentError`. |

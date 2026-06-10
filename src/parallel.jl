@@ -3,6 +3,8 @@ using Random
 
 abstract type AbstractMapBackend end
 
+const PARALLEL_OPTIONS = (:serial, :none, :threads, :threaded, :distributed)
+
 struct SerialMapBackend <: AbstractMapBackend
     queue_size::Int
 end
@@ -42,6 +44,75 @@ end
 backend_kind(::SerialMapBackend) = :serial
 backend_kind(::ThreadedMapBackend) = :threaded
 backend_kind(::DistributedMapBackend) = :distributed
+
+function _parallel_kind(parallel)
+    if parallel isa Symbol
+        kind = Symbol(lowercase(String(parallel)))
+    elseif parallel isa AbstractString
+        kind = Symbol(lowercase(strip(String(parallel))))
+    else
+        throw(
+            ArgumentError(
+                "parallel must be one of $(collect(PARALLEL_OPTIONS)); got $(repr(parallel))"
+            ),
+        )
+    end
+    kind in PARALLEL_OPTIONS || throw(
+        ArgumentError(
+            "unsupported parallel $(repr(parallel)); expected one of $(collect(PARALLEL_OPTIONS))"
+        ),
+    )
+    return kind === :threads ? :threaded : (kind === :none ? :serial : kind)
+end
+
+function _get_map_backend(parallel=:serial, map_backend=nothing, queue_size=nothing)
+    if !isnothing(map_backend)
+        map_backend isa AbstractMapBackend || throw(
+            ArgumentError(
+                "map_backend must be an AbstractMapBackend; got $(typeof(map_backend))"
+            ),
+        )
+        isnothing(queue_size) || throw(
+            ArgumentError(
+                "queue_size cannot be supplied with an explicit map_backend; configure queue_size on the backend itself",
+            ),
+        )
+        return map_backend
+    end
+    kind = _parallel_kind(parallel)
+    if kind === :serial
+        return SerialMapBackend(; queue_size)
+    elseif kind === :threaded
+        return ThreadedMapBackend(; queue_size)
+    elseif kind === :distributed
+        return DistributedMapBackend(; queue_size)
+    end
+end
+
+function _backend_config(backend::AbstractMapBackend)
+    config = Dict{Symbol, Any}(
+        :kind => backend_kind(backend), :queue_size => getfield(backend, :queue_size)
+    )
+    backend isa DistributedMapBackend && (config[:workers] = copy(backend.workers))
+    return config
+end
+
+function _map_backend_from_config(config)
+    isnothing(config) && return SerialMapBackend()
+    cfg = Dict{Symbol, Any}(Symbol(key) => value for (key, value) in config)
+    kind = Symbol(get(cfg, :kind, :serial))
+    queue_size = get(cfg, :queue_size, nothing)
+    if kind === :serial
+        return SerialMapBackend(; queue_size)
+    elseif kind === :threaded || kind === :threads
+        return ThreadedMapBackend(; queue_size)
+    elseif kind === :distributed
+        workers = Vector{Int}(get(cfg, :workers, Distributed.workers()))
+        return DistributedMapBackend(; workers, queue_size)
+    else
+        throw(ArgumentError("unsupported map backend checkpoint kind $(repr(kind))"))
+    end
+end
 
 struct MapTaskError <: Exception
     backend::Symbol
@@ -126,13 +197,15 @@ function map_ordered(backend::DistributedMapBackend, f, inputs)
     if isempty(items)
         return Any[]
     end
-    active_workers = filter(!=(myid()), backend.workers)
+    current_workers = Distributed.workers()
+    active_workers = filter(w -> w != myid() && w in current_workers, backend.workers)
     if isempty(active_workers)
         return map_ordered(SerialMapBackend(; queue_size=1), f, items)
     end
     indexed = collect(enumerate(items))
     runner = pair -> _run_task(backend, f, pair[1], pair[2])
-    return Distributed.pmap(runner, indexed; batch_size=backend.queue_size)
+    pool = Distributed.WorkerPool(active_workers)
+    return Distributed.pmap(runner, pool, indexed; batch_size=backend.queue_size)
 end
 
 function _splitmix64(x::UInt64)

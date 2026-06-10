@@ -55,6 +55,7 @@ mutable struct DynamicSampler{L, P}
     bound_update_interval_ratio::Float64
     first_bound_update::Dict{Symbol, Any}
     rng::AbstractRNG
+    map_backend::AbstractMapBackend
     periodic::Any
     reflective::Any
     walks::Any
@@ -104,6 +105,9 @@ function DynamicSampler(
     first_bound_update=nothing,
     rng=nothing,
     rstate=nothing,
+    parallel=:serial,
+    map_backend=nothing,
+    queue_size=nothing,
     enlarge=nothing,
     bootstrap=nothing,
     bound_enlarge=nothing,
@@ -137,6 +141,7 @@ function DynamicSampler(
         Random.default_rng()
     end
     rng_obj isa AbstractRNG || throw(ArgumentError("rng/rstate must be an AbstractRNG"))
+    backend = _get_map_backend(parallel, map_backend, queue_size)
 
     sampling_v = isnothing(sampling) ? sample : sampling
     bounding_v = isnothing(bounding) ? bound : bounding
@@ -186,6 +191,7 @@ function DynamicSampler(
         interval_ratio,
         first_update_d,
         rng_obj,
+        backend,
         periodic,
         reflective,
         walks,
@@ -472,6 +478,14 @@ function _configure_batch_sampler(
     rng = _dynamic_get(main_sampler, (:rng, :rstate); default=Random.default_rng())
     rng isa AbstractRNG ||
         throw(ArgumentError("main sampler rng/rstate must be an AbstractRNG"))
+    backend_value = _dynamic_get(main_sampler, (:map_backend,); default=nothing)
+    map_backend = if isnothing(backend_value)
+        _map_backend_from_config(_dynamic_get(main_sampler, (:map_backend_config,); default=nothing))
+    else
+        backend_value
+    end
+    map_backend isa AbstractMapBackend ||
+        throw(ArgumentError("main sampler map_backend must be an AbstractMapBackend"))
     sampling = _dynamic_get(main_sampler, (:sampling, :sample, :sample_kind); default=:auto)
     bounding = _dynamic_get(main_sampler, (:bounding, :bound, :bound_kind); default=:multi)
     periodic = _dynamic_get(main_sampler, (:periodic,); default=nothing)
@@ -511,6 +525,7 @@ function _configure_batch_sampler(
             nlive=nlive_i,
             ndim,
             rng,
+            map_backend=map_backend,
             blob,
             copy_inputs,
         )
@@ -553,6 +568,7 @@ function _configure_batch_sampler(
             ncdim,
             blob,
             copy_inputs,
+            map_backend,
             bound_enlarge,
             bound_bootstrap,
             save_bounds,
@@ -592,6 +608,7 @@ function _configure_batch_sampler(
             ncdim,
             blob,
             copy_inputs,
+            map_backend,
             bound_enlarge,
             bound_bootstrap,
             save_bounds,
@@ -652,6 +669,7 @@ function _configure_batch_sampler(
             ncdim,
             blob,
             copy_inputs,
+            map_backend,
             bound_enlarge,
             bound_bootstrap,
             save_bounds,
@@ -694,6 +712,7 @@ function _dynamic_nested_sampler_for_batch(
     ncdim,
     blob,
     copy_inputs,
+    map_backend,
     bound_enlarge,
     bound_bootstrap,
     save_bounds,
@@ -720,6 +739,7 @@ function _dynamic_nested_sampler_for_batch(
         ncdim,
         blob,
         copy_inputs,
+        map_backend,
     )
     sampler.save_bounds = save_bounds
     sampler.logl_first_update = logl_first_update
@@ -1255,6 +1275,7 @@ function run_nested!(
             update_interval=update_interval_i,
             first_update=first_update_d,
             rng=sampler.rng,
+            map_backend=sampler.map_backend,
             live_points,
             enlarge=sampler.bound_enlarge,
             bootstrap=sampler.bound_bootstrap,
@@ -1425,6 +1446,7 @@ function sampler_snapshot(sampler::DynamicSampler)
         :bound_update_interval_ratio => sampler.bound_update_interval_ratio,
         :first_bound_update => sampler.first_bound_update,
         :rng => sampler.rng,
+        :map_backend_config => _backend_config(sampler.map_backend),
         :periodic => sampler.periodic,
         :reflective => sampler.reflective,
         :walks => sampler.walks,
@@ -1471,6 +1493,7 @@ function _restore_dynamic_sampler(state::AbstractDict, loglikelihood, prior_tran
         bound_update_interval_ratio=Float64(state[:bound_update_interval_ratio]),
         first_update=state[:first_bound_update],
         rng=state[:rng],
+        map_backend=_map_backend_from_config(get(state, :map_backend_config, nothing)),
         enlarge=state[:bound_enlarge],
         bootstrap=state[:bound_bootstrap],
         walks=state[:walks],

@@ -89,6 +89,7 @@ function dynamic_parent_fixture(; rng=MersenneTwister(1234))
         :first_update => Dict(:min_ncall => 1, :min_eff => 100.0),
         :bound_bootstrap => 0,
         :bound_enlarge => 1.0,
+        :map_backend => ThreadedMapBackend(queue_size=2),
         :saved_run => dynamic_saved_record(),
         :it => 7,
         :eff => 44.0,
@@ -366,6 +367,8 @@ end
     @test fresh.sampler.bound_update_interval == 3
     @test fresh.sampler.save_bounds
     @test fresh.sampler.bound isa Ellipsoid
+    @test fresh.sampler.map_backend isa ThreadedMapBackend
+    @test fresh.sampler.map_backend.queue_size == 2
     @test fresh.sampler.dlv ≈ log(5 / 4)
     @test isempty(fresh.sampler.saved_run[:logl])
 
