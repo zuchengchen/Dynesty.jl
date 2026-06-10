@@ -239,6 +239,60 @@ function get_neff_from_logwt(logwt::AbstractVector{<:Real})
     return sum(weights)^2 / sum(abs2, weights)
 end
 
+function _mask_from_dimension_indices(indices, ndim::Int, name::Symbol)
+    isnothing(indices) && return nothing
+    if indices isa AbstractVector{Bool}
+        length(indices) == ndim ||
+            throw(DimensionMismatch("$name mask length $(length(indices)) != ndim $ndim"))
+        return collect(indices)
+    end
+    mask = falses(ndim)
+    for raw in indices
+        idx = Int(raw)
+        1 <= idx <= ndim || throw(BoundsError("$name index $idx outside 1:$ndim"))
+        mask[idx] = true
+    end
+    return mask
+end
+
+"""
+    get_nonbounded(ndim, periodic, reflective)
+
+Return a boolean mask where ordinary dimensions are `true` and periodic or
+reflective dimensions are `false`. Indices are 1-based; use
+`from_python_indices` to convert Python dynesty index lists explicitly.
+"""
+function get_nonbounded(ndim::Integer, periodic=nothing, reflective=nothing)
+    ndim_i = Int(ndim)
+    ndim_i > 0 || throw(ArgumentError("ndim must be positive; got $ndim"))
+    periodic_mask = _mask_from_dimension_indices(periodic, ndim_i, :periodic)
+    reflective_mask = _mask_from_dimension_indices(reflective, ndim_i, :reflective)
+    if !isnothing(periodic_mask) &&
+        !isnothing(reflective_mask) &&
+        any(periodic_mask .& reflective_mask)
+        throw(ArgumentError("a dimension cannot be both periodic and reflective"))
+    end
+    isnothing(periodic_mask) && isnothing(reflective_mask) && return nothing
+    nonbounded = trues(ndim_i)
+    !isnothing(periodic_mask) && (nonbounded[periodic_mask] .= false)
+    !isnothing(reflective_mask) && (nonbounded[reflective_mask] .= false)
+    return nonbounded
+end
+
+"""
+    get_random_generator(seed=nothing)
+
+Return a Julia random generator. Existing `AbstractRNG` objects are returned
+unchanged; integer seeds create a `MersenneTwister`; `nothing` returns
+`Random.default_rng()`.
+"""
+function get_random_generator(seed=nothing)
+    isnothing(seed) && return Random.default_rng()
+    seed isa AbstractRNG && return seed
+    seed isa Integer && return MersenneTwister(Int(seed))
+    throw(ArgumentError("seed must be nothing, an integer, or an AbstractRNG"))
+end
+
 """
     unitcheck(u; nonbounded=nothing)
 

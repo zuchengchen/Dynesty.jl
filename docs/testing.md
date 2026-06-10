@@ -40,8 +40,9 @@ Deterministic numerical functions default to `rtol=1e-10` and `atol=1e-12`.
 Matrix decomposition, covariance, log-determinant, or clustering-order cases may
 use `rtol=1e-8` and `atol=1e-10` when justified.
 
-Stage 1 fixtures cover `get_neff_from_logwt`, `apply_reflect`,
-`mean_and_cov`, and `compute_integrals`. Stage 2 fixtures cover
+Stage 1 fixtures cover `get_neff_from_logwt`, `get_nonbounded`, `unitcheck`,
+`apply_reflect`, `mean_and_cov`, `resample_equal`, `quantile`,
+`compute_integrals`, and `progress_integration`. Stage 2 fixtures cover
 `UnitCube`, `Ellipsoid`, `MultiEllipsoid`, `RadFriends`, `SupFriends`,
 `improve_covar_mat`, `bounding_ellipsoid`, `bounding_ellipsoids`,
 `randsphere`, `rand_choice`, determinant guards, recursive multi-ellipsoid

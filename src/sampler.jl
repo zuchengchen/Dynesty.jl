@@ -110,22 +110,8 @@ function _mask_from_sampler_indices(indices, ndim::Int, name::Symbol)
     return mask
 end
 
-function _nonbounded_mask(ndim::Int, periodic, reflective)
-    periodic_mask = _mask_from_sampler_indices(periodic, ndim, :periodic)
-    reflective_mask = _mask_from_sampler_indices(reflective, ndim, :reflective)
-    if !isnothing(periodic_mask) &&
-        !isnothing(reflective_mask) &&
-        any(periodic_mask .& reflective_mask)
-        throw(ArgumentError("a dimension cannot be both periodic and reflective"))
-    end
-    if isnothing(periodic_mask) && isnothing(reflective_mask)
-        return nothing
-    end
-    nonbounded = trues(ndim)
-    !isnothing(periodic_mask) && (nonbounded[periodic_mask] .= false)
-    !isnothing(reflective_mask) && (nonbounded[reflective_mask] .= false)
-    return nonbounded
-end
+_nonbounded_mask(ndim::Int, periodic, reflective) =
+    get_nonbounded(ndim, periodic, reflective)
 
 function _internal_sampler_kind(sampler::AbstractInternalSampler)
     sampler isa UniformBoundSampler && return :unif

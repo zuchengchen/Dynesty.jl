@@ -1,6 +1,10 @@
 using Dynesty
+using JSON3
 using Random
 using Test
+
+utils_matrix_from_json(rows) =
+    reduce(vcat, [reshape(Vector{Float64}(row), 1, :) for row in rows])
 
 @testset "LoglOutput and LogLikelihood" begin
     plain = LoglOutput(-2.5)
@@ -32,11 +36,48 @@ using Test
 end
 
 @testset "Core utility functions" begin
+    fixture = JSON3.read(
+        read(
+            joinpath(@__DIR__, "reference", "python", "fixtures", "utils_core.json"), String
+        ),
+    )
     @test get_neff_from_logwt(log.([0.2, 0.3, 0.5])) ≈ 1 / sum(abs2, [0.2, 0.3, 0.5])
     @test unitcheck([0.1, 0.9])
     @test !unitcheck([0.0, 0.9])
     @test unitcheck([0.2, -0.25]; nonbounded=[true, false])
     @test !unitcheck([0.2, -0.75]; nonbounded=[true, false])
+
+    unit = fixture["unitcheck"]
+    @test unitcheck(Vector{Float64}(unit["inside"])) == unit["inside_value"]
+    @test unitcheck(Vector{Float64}(unit["edge"])) == unit["edge_value"]
+    @test unitcheck(
+        Vector{Float64}(unit["nonbounded_u"]); nonbounded=Vector{Bool}(unit["nonbounded"])
+    ) == unit["nonbounded_value"]
+    @test unitcheck(
+        Vector{Float64}(unit["nonbounded_bad_u"]);
+        nonbounded=Vector{Bool}(unit["nonbounded"]),
+    ) == unit["nonbounded_bad_value"]
+
+    nonbounded = fixture["get_nonbounded"]
+    @test get_nonbounded(
+        nonbounded["ndim"],
+        Vector{Int}(nonbounded["periodic_julia_1_based"]),
+        Vector{Int}(nonbounded["reflective_julia_1_based"]),
+    ) == Vector{Bool}(nonbounded["value"])
+    @test get_nonbounded(3, nothing, nothing) === nothing
+    @test get_nonbounded(3, [false, true, false], nothing) == [true, false, true]
+    @test_throws ArgumentError get_nonbounded(3, [1], [1])
+    @test_throws BoundsError get_nonbounded(3, [0], nothing)
+    @test from_python_indices(nonbounded["periodic_python_0_based"]; ndim=4) ==
+        Vector{Int}(nonbounded["periodic_julia_1_based"])
+
+    rng = get_random_generator(123)
+    @test rng isa MersenneTwister
+    @test rand(get_random_generator(123), 3) == rand(get_random_generator(123), 3)
+    existing_rng = MersenneTwister(321)
+    @test get_random_generator(existing_rng) === existing_rng
+    @test get_random_generator() isa AbstractRNG
+    @test_throws ArgumentError get_random_generator("seed")
 
     u = [-0.9, 1.1, 2.9, 4.2]
     @test apply_reflect(u) ≈ [0.9, 0.9, 0.9, 0.2]
@@ -52,8 +93,29 @@ end
     @test size(equal) == size(samples)
     @test all(row -> row in eachrow(samples), eachrow(equal))
 
+    resample_fixture = fixture["resample_equal"]
+    resample_samples = utils_matrix_from_json(resample_fixture["samples"])
+    resample_weights = Vector{Float64}(resample_fixture["weights"])
+    equal_a = resample_equal(
+        resample_samples, resample_weights; rng=MersenneTwister(resample_fixture["seed"])
+    )
+    equal_b = resample_equal(
+        resample_samples, resample_weights; rng=MersenneTwister(resample_fixture["seed"])
+    )
+    @test equal_a == equal_b
+    @test size(equal_a) == size(resample_samples)
+    @test all(row -> row in eachrow(resample_samples), eachrow(equal_a))
+
     @test quantile([0.0, 10.0, 20.0], [0.0, 0.5, 1.0]) ≈ [0.0, 10.0, 20.0]
     @test quantile([0.0, 10.0, 20.0], 0.5; weights=[0.2, 0.3, 0.5]) ≈ 11.666666666666666
+    quant = fixture["quantile"]
+    @test quantile(Vector{Float64}(quant["x"]), Vector{Float64}(quant["q"])) ≈
+        Vector{Float64}(quant["unweighted"]) rtol = quant["rtol"] atol = quant["atol"]
+    @test quantile(
+        Vector{Float64}(quant["x"]),
+        Vector{Float64}(quant["q"]);
+        weights=Vector{Float64}(quant["weights"]),
+    ) ≈ Vector{Float64}(quant["weighted"]) rtol = quant["rtol"] atol = quant["atol"]
     @test_throws ArgumentError quantile([1.0], 1.5)
 
     @test logvol_prefactor(2) ≈ log(pi)
@@ -73,4 +135,17 @@ end
     stepped = progress_integration(-3.0, -2.0, -Inf, 0.0, 0.0, 0.25, 0.0)
     @test isfinite(stepped.logwt)
     @test isfinite(stepped.logz)
+
+    fixture = JSON3.read(
+        read(
+            joinpath(@__DIR__, "reference", "python", "fixtures", "utils_core.json"), String
+        ),
+    )
+    progress = fixture["progress_integration"]
+    progress_args = Vector{Float64}(progress["args"])
+    stepped_fixture = progress_integration(progress_args...)
+    @test stepped_fixture.logwt ≈ progress["logwt"] rtol = progress["rtol"] atol = progress["atol"]
+    @test stepped_fixture.logz ≈ progress["logz"] rtol = progress["rtol"] atol = progress["atol"]
+    @test stepped_fixture.logzvar ≈ progress["logzvar"] rtol = progress["rtol"] atol = progress["atol"]
+    @test stepped_fixture.h ≈ progress["h"] rtol = progress["rtol"] atol = progress["atol"]
 end

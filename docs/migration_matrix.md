@@ -87,21 +87,21 @@ Statuses:
 | `dynesty.utils.print_fn_fallback` | `print_fn_fallback` | C | planned | `test/test_utils.jl` | not needed | Display helper. |
 | `dynesty.utils.Results` | `Results` | A | implemented | `test/test_results.jl`, `test/test_results_postprocess.jl` | `test/reference/python/fixtures/results_postprocess.json` | Public results container with Julia `blobs` plus compatibility aliases for Python `blob`, `samples_bound`, and `batch`. |
 | `dynesty.utils.results_substitute` | `results_substitute` | B | implemented | `test/test_results.jl`, `test/test_results_postprocess.jl` | `test/reference/python/fixtures/results_postprocess.json` | Results replacement helper; missing replacement keys are ignored like Python. |
-| `dynesty.utils.get_nonbounded` | `get_nonbounded` | B | planned | `test/test_utils.jl` | planned | Bound-type helper. |
+| `dynesty.utils.get_nonbounded` | `get_nonbounded` | B | implemented | `test/test_utils.jl` | `test/reference/python/fixtures/utils_core.json` | Bound-type helper; Julia uses 1-based indices and fixtures record Python/Julia pairs. |
 | `dynesty.utils.get_print_func` | `get_print_func` | C | planned | `test/test_utils.jl` | not needed | Display helper. |
-| `dynesty.utils.get_random_generator` | `get_random_generator` | B | planned | `test/test_utils.jl` | planned | RNG compatibility helper. |
+| `dynesty.utils.get_random_generator` | `get_random_generator` | B | implemented | `test/test_utils.jl` | not needed | Julia-native RNG helper; existing RNGs are preserved and integer seeds create deterministic Julia RNGs. |
 | `dynesty.utils.get_seed_sequence` | `task_seeds` | A | implemented | `test/test_parallel.jl` | not needed | Julia-native deterministic seeds; no cross-language same-seed promise. |
 | `dynesty.utils.get_neff_from_logwt` | `get_neff_from_logwt` | A | implemented | `test/test_utils.jl` | `test/reference/python/fixtures/utils_core.json` | Effective sample size. |
-| `dynesty.utils.unitcheck` | `unitcheck` | A | implemented | `test/test_utils.jl` | planned | Unit-cube validation. |
+| `dynesty.utils.unitcheck` | `unitcheck` | A | implemented | `test/test_utils.jl` | `test/reference/python/fixtures/utils_core.json` | Unit-cube validation. |
 | `dynesty.utils.apply_reflect` | `apply_reflect` / `apply_reflect!` | A | implemented | `test/test_utils.jl` | `test/reference/python/fixtures/utils_core.json` | Reflective dimension handling. |
 | `dynesty.utils.mean_and_cov` | `mean_and_cov` | A | implemented | `test/test_utils.jl` | `test/reference/python/fixtures/utils_core.json` | Weighted statistics. |
-| `dynesty.utils.resample_equal` | `resample_equal` | A | implemented | `test/test_utils.jl` | planned | Equal-weight resampling; statistical fixture expansion remains. |
-| `dynesty.utils.quantile` | `quantile` | A | implemented | `test/test_utils.jl` | planned | Weighted quantile. |
+| `dynesty.utils.resample_equal` | `resample_equal` | A | implemented | `test/test_utils.jl` | `test/reference/python/fixtures/utils_core.json` | Equal-weight resampling; fixture records Python seeded output, Julia tests deterministic replay and invariants. |
+| `dynesty.utils.quantile` | `quantile` | A | implemented | `test/test_utils.jl` | `test/reference/python/fixtures/utils_core.json` | Weighted quantile. |
 | `dynesty.utils._get_nsamps_samples_n` | `_get_nsamps_samples_n` | B | implemented | `test/test_results_postprocess.jl` | `test/reference/python/fixtures/results_postprocess.json` | Post-processing helper for static/dynamic live-point counts. |
 | `dynesty.utils._find_decrease` | `_find_decrease` | B | implemented | `test/test_results_postprocess.jl` | `test/reference/python/fixtures/results_postprocess.json` | Post-processing helper; fixtures record Python 0-based and Julia 1-based half-open bounds. |
 | `dynesty.utils.jitter_run` | `jitter_run` | A | implemented | `test/test_results_postprocess.jl` | statistical/invariant | Prior-volume jitter error helper; stochastic checks use deterministic Julia seeds and invariants. |
 | `dynesty.utils.compute_integrals` | `compute_integrals` | A | implemented | `test/test_utils.jl` | `test/reference/python/fixtures/utils_core.json` | Evidence integral baseline. |
-| `dynesty.utils.progress_integration` | `progress_integration` | A | implemented | `test/test_utils.jl` | planned | Running evidence integration. |
+| `dynesty.utils.progress_integration` | `progress_integration` | A | implemented | `test/test_utils.jl` | `test/reference/python/fixtures/utils_core.json` | Running evidence integration. |
 | `dynesty.utils.resample_run` | `resample_run` | A | implemented | `test/test_results_postprocess.jl` | statistical/invariant | Run resampling and return-index behavior; random draws checked by invariants. |
 | `dynesty.utils.reweight_run` | `reweight_run` | A | implemented | `test/test_results_postprocess.jl` | `test/reference/python/fixtures/results_postprocess.json` | Importance reweighting; deterministic fixture covers weights, evidence, errors, and `h`/`information` compatibility. |
 | `dynesty.utils.unravel_run` | `unravel_run` | A | implemented | `test/test_results_postprocess.jl` | `test/reference/python/fixtures/results_postprocess.json` | Run unraveling into one-live-point strands. |

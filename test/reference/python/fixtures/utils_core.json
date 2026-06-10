@@ -65,6 +65,27 @@
     "rtol": 1e-12,
     "value": 2.6315789473684212
   },
+  "get_nonbounded": {
+    "ndim": 4,
+    "periodic_julia_1_based": [
+      2
+    ],
+    "periodic_python_0_based": [
+      1
+    ],
+    "reflective_julia_1_based": [
+      4
+    ],
+    "reflective_python_0_based": [
+      3
+    ],
+    "value": [
+      true,
+      false,
+      true,
+      false
+    ]
+  },
   "mean_and_cov": {
     "atol": 1e-12,
     "cov": [
@@ -102,15 +123,139 @@
       0.5
     ]
   },
+  "progress_integration": {
+    "args": [
+      -3.0,
+      -2.0,
+      -10.0,
+      0.2,
+      0.0,
+      0.25,
+      0.1
+    ],
+    "atol": 1e-12,
+    "h": 1.3547547876387176,
+    "logwt": -3.6385770424877544,
+    "logz": -3.6368516242318267,
+    "logzvar": 0.5136886969096794,
+    "rtol": 1e-10
+  },
+  "quantile": {
+    "atol": 1e-12,
+    "q": [
+      0.0,
+      0.25,
+      0.5,
+      0.75,
+      1.0
+    ],
+    "rtol": 1e-12,
+    "unweighted": [
+      0.0,
+      5.0,
+      10.0,
+      15.0,
+      20.0
+    ],
+    "weighted": [
+      0.0,
+      6.25,
+      11.666666666666666,
+      15.833333333333332,
+      20.0
+    ],
+    "weights": [
+      0.2,
+      0.3,
+      0.5
+    ],
+    "x": [
+      0.0,
+      10.0,
+      20.0
+    ]
+  },
+  "resample_equal": {
+    "note": "Julia uses its own RNG; tests check deterministic Julia replay and resampling invariants.",
+    "python_value": [
+      [
+        3.0,
+        4.0
+      ],
+      [
+        7.0,
+        9.0
+      ],
+      [
+        1.0,
+        2.0
+      ],
+      [
+        1.0,
+        2.0
+      ]
+    ],
+    "samples": [
+      [
+        1.0,
+        2.0
+      ],
+      [
+        3.0,
+        4.0
+      ],
+      [
+        5.0,
+        8.0
+      ],
+      [
+        7.0,
+        9.0
+      ]
+    ],
+    "seed": 2024,
+    "weights": [
+      0.5,
+      0.25,
+      0.15,
+      0.1
+    ]
+  },
   "source": {
     "branch": "master",
     "commit": "3ec158de0d2bf12a56230faacd0c987b3d55d550",
     "dynesty_version": "2.1.2",
-    "generated_at": "2026-06-09T19:32:11.840153+00:00",
+    "generated_at": "2026-06-10T04:34:41.652662+00:00",
     "numpy_version": "1.21.5",
     "path": "/home/czc/projects/working/dynesty",
     "python_version": "3.9.18",
     "scipy_version": "1.7.3",
     "status_short": ""
+  },
+  "unitcheck": {
+    "edge": [
+      0.0,
+      0.9
+    ],
+    "edge_value": false,
+    "inside": [
+      0.1,
+      0.9
+    ],
+    "inside_value": true,
+    "nonbounded": [
+      true,
+      false
+    ],
+    "nonbounded_bad_u": [
+      0.2,
+      -0.75
+    ],
+    "nonbounded_bad_value": false,
+    "nonbounded_u": [
+      0.2,
+      -0.25
+    ],
+    "nonbounded_value": true
   }
 }

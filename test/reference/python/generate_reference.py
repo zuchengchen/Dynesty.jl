@@ -36,6 +36,14 @@ def main() -> None:
     logl = np.array([-3.0, -2.0, -1.0, -0.5])
     logvol = np.array([-0.25, -0.75, -1.4, -2.3])
     logwt_i, logz, logzvar, h = utils.compute_integrals(logl=logl, logvol=logvol)
+    nonbounded_periodic = np.array([1])
+    nonbounded_reflective = np.array([3])
+    quantile_x = np.array([0.0, 10.0, 20.0])
+    quantile_q = np.array([0.0, 0.25, 0.5, 0.75, 1.0])
+    quantile_weights = np.array([0.2, 0.3, 0.5])
+    progress_args = (-3.0, -2.0, -10.0, 0.2, 0.0, 0.25, 0.1)
+    resample_samples = np.array([[1.0, 2.0], [3.0, 4.0], [5.0, 8.0], [7.0, 9.0]])
+    resample_weights = np.array([0.5, 0.25, 0.15, 0.1])
 
     fixture = {
         "source": {
@@ -76,6 +84,60 @@ def main() -> None:
             "logz": logz.tolist(),
             "logzvar": logzvar.tolist(),
             "h": h.tolist(),
+            "rtol": 1e-10,
+            "atol": 1e-12,
+        },
+        "get_nonbounded": {
+            "ndim": 4,
+            "periodic_python_0_based": nonbounded_periodic.tolist(),
+            "reflective_python_0_based": nonbounded_reflective.tolist(),
+            "periodic_julia_1_based": (nonbounded_periodic + 1).tolist(),
+            "reflective_julia_1_based": (nonbounded_reflective + 1).tolist(),
+            "value": utils.get_nonbounded(
+                4, nonbounded_periodic, nonbounded_reflective
+            ).tolist(),
+        },
+        "unitcheck": {
+            "inside": [0.1, 0.9],
+            "edge": [0.0, 0.9],
+            "nonbounded_u": [0.2, -0.25],
+            "nonbounded_bad_u": [0.2, -0.75],
+            "nonbounded": [True, False],
+            "inside_value": bool(utils.unitcheck(np.array([0.1, 0.9]))),
+            "edge_value": bool(utils.unitcheck(np.array([0.0, 0.9]))),
+            "nonbounded_value": bool(
+                utils.unitcheck(np.array([0.2, -0.25]), np.array([True, False]))
+            ),
+            "nonbounded_bad_value": bool(
+                utils.unitcheck(np.array([0.2, -0.75]), np.array([True, False]))
+            ),
+        },
+        "resample_equal": {
+            "samples": resample_samples.tolist(),
+            "weights": resample_weights.tolist(),
+            "seed": 2024,
+            "python_value": utils.resample_equal(
+                resample_samples, resample_weights, np.random.default_rng(2024)
+            ).tolist(),
+            "note": "Julia uses its own RNG; tests check deterministic Julia replay and resampling invariants.",
+        },
+        "quantile": {
+            "x": quantile_x.tolist(),
+            "q": quantile_q.tolist(),
+            "weights": quantile_weights.tolist(),
+            "unweighted": utils.quantile(quantile_x, quantile_q).tolist(),
+            "weighted": utils.quantile(
+                quantile_x, quantile_q, weights=quantile_weights
+            ),
+            "rtol": 1e-12,
+            "atol": 1e-12,
+        },
+        "progress_integration": {
+            "args": list(progress_args),
+            "logwt": float(utils.progress_integration(*progress_args)[0]),
+            "logz": float(utils.progress_integration(*progress_args)[1]),
+            "logzvar": float(utils.progress_integration(*progress_args)[2]),
+            "h": float(utils.progress_integration(*progress_args)[3]),
             "rtol": 1e-10,
             "atol": 1e-12,
         },
