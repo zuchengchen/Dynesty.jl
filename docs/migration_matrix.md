@@ -59,15 +59,15 @@ Statuses:
 | `dynesty.internal_samplers.tune_slice` | `tune_slice` | B | implemented | `test/test_internal_samplers.jl` | not needed | Tuning helper. |
 | `dynesty.plotting._make_subplots` | plotting backend setup | C | replacement | `test/test_plotting.jl` | not needed | Recipes/Plots-compatible replacement. |
 | `dynesty.plotting.rotate_ticks` | plotting backend setup | C | replacement | `test/test_plotting.jl` | not needed | Matplotlib-specific helper not directly exposed. |
-| `dynesty.plotting.plot_thruth` | `plot_truth` | C | planned | `test/test_plotting.jl` | not needed | Name typo kept only if compatibility is useful. |
-| `dynesty.plotting.check_span` | `check_span` | B | planned | `test/test_plotting.jl` | planned | Plot range helper. |
+| `dynesty.plotting.plot_thruth` | `plot_truth` | C | implemented | `test/test_plotting.jl` | not needed | Backend-neutral truth-line data helper; Python typo is not exported. |
+| `dynesty.plotting.check_span` | `check_span` | B | implemented | `test/test_plotting.jl` | `test/reference/python/fixtures/plotting_core.json` | Plot range helper; Julia returns normalized spans instead of mutating input. |
 | `dynesty.plotting.runplot` | `runplot` | C | planned | `test/test_plotting.jl` | not needed | Plot smoke test. |
 | `dynesty.plotting.traceplot` | `traceplot` | C | planned | `test/test_plotting.jl` | not needed | Plot smoke test. |
 | `dynesty.plotting.cornerpoints` | `cornerpoints` | C | planned | `test/test_plotting.jl` | not needed | Plot smoke test. |
 | `dynesty.plotting.cornerplot` | `cornerplot` | C | planned | `test/test_plotting.jl` | not needed | Plot smoke test. |
 | `dynesty.plotting.boundplot` | `boundplot` | C | planned | `test/test_plotting.jl` | not needed | Plot smoke test. |
 | `dynesty.plotting.cornerbound` | `cornerbound` | C | planned | `test/test_plotting.jl` | not needed | Plot smoke test. |
-| `dynesty.plotting._hist2d` | `_hist2d` | B | planned | `test/test_plotting.jl` | planned | Numerical histogram helper. |
+| `dynesty.plotting._hist2d` | `_hist2d` / `Hist2DResult` | B | implemented | `test/test_plotting.jl` | `test/reference/python/fixtures/plotting_core.json` | Numerical histogram/contour helper with RecipesBase recipe. |
 | `dynesty.pool.FunctionCache` | backend task closure | C | replacement | `test/test_parallel.jl` | not needed | Julia map backends replace Python multiprocessing cache. |
 | `dynesty.pool.initializer` | backend initialization | C | replacement | `test/test_parallel.jl` | not needed | Julia backend setup. |
 | `dynesty.pool.loglike_cache` | backend task closure | C | replacement | `test/test_parallel.jl` | not needed | Julia closures replace global cache. |

@@ -83,3 +83,13 @@ end
     @test multi.nells == fixture["multi"]["nells"]
     @test multi.logvol ≈ fixture["multi"]["logvol"] rtol = 1e-10 atol = 1e-12
 end
+
+@testset "Python plotting fixtures" begin
+    fixture_path = joinpath(
+        @__DIR__, "reference", "python", "fixtures", "plotting_core.json"
+    )
+    fixture = JSON3.read(read(fixture_path, String))
+    @test fixture["source"]["commit"] == "3ec158de0d2bf12a56230faacd0c987b3d55d550"
+    @test haskey(fixture, "check_span")
+    @test haskey(fixture, "hist2d")
+end

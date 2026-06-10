@@ -16,6 +16,7 @@ import dynesty
 from dynesty import utils
 from dynesty import bounding
 from dynesty import dynamicsampler
+from dynesty import plotting
 
 
 ROOT = Path(__file__).resolve().parents[3]
@@ -143,6 +144,80 @@ def main() -> None:
         },
     }
     (FIXTURES / "utils_core.json").write_text(json.dumps(fixture, indent=2, sort_keys=True) + "\n")
+
+    plot_samples = np.array(
+        [
+            [0.0, 0.0],
+            [1.0, 0.5],
+            [2.0, 1.5],
+            [3.0, 2.5],
+            [4.0, 3.0],
+        ]
+    )
+    plot_weights = np.array([0.05, 0.15, 0.25, 0.30, 0.25])
+    plot_span = [0.8, [0.25, 2.75]]
+    plot_span_checked = [0.8, [0.25, 2.75]]
+    plotting.check_span(plot_span_checked, plot_samples.T, plot_weights)
+    hist_x = np.array([0.1, 0.2, 0.7, 0.8, 1.2, 1.7, 1.8, 2.4])
+    hist_y = np.array([1.0, 1.2, 1.6, 1.8, 2.1, 2.5, 2.6, 3.0])
+    hist_weights = np.array([0.05, 0.10, 0.15, 0.10, 0.20, 0.10, 0.20, 0.10])
+    hist_span = [[0.0, 2.5], [0.8, 3.2]]
+    hist_bins = [4, 5]
+    hist_levels = np.array([0.25, 0.5, 0.75])
+    hist_density, hist_xedges, hist_yedges = np.histogram2d(
+        hist_x,
+        hist_y,
+        bins=hist_bins,
+        range=list(map(np.sort, hist_span)),
+        weights=hist_weights,
+    )
+    hist_flat = hist_density.flatten()
+    hist_flat = hist_flat[np.argsort(hist_flat)[::-1]]
+    hist_cumsum = np.cumsum(hist_flat)
+    hist_cumsum /= hist_cumsum[-1]
+    hist_thresholds = np.empty(len(hist_levels))
+    for i, level in enumerate(hist_levels):
+        try:
+            hist_thresholds[i] = hist_flat[hist_cumsum <= level][-1]
+        except Exception:
+            hist_thresholds[i] = hist_flat[0]
+    hist_thresholds.sort()
+    duplicate = np.diff(hist_thresholds) == 0
+    while np.any(duplicate):
+        hist_thresholds[np.where(duplicate)[0][0]] *= 1.0 - 1e-4
+        duplicate = np.diff(hist_thresholds) == 0
+    hist_thresholds.sort()
+    hist_xcenters = 0.5 * (hist_xedges[1:] + hist_xedges[:-1])
+    hist_ycenters = 0.5 * (hist_yedges[1:] + hist_yedges[:-1])
+    plotting_fixture = {
+        "source": fixture["source"],
+        "check_span": {
+            "samples": plot_samples.tolist(),
+            "samples_for_python_note": "Python plotting.check_span expects ndim x nsamples; fixture stores public nsamples x ndim.",
+            "weights": plot_weights.tolist(),
+            "span": plot_span,
+            "value": [list(map(float, value)) for value in plot_span_checked],
+            "rtol": 1e-12,
+            "atol": 1e-12,
+        },
+        "hist2d": {
+            "x": hist_x.tolist(),
+            "y": hist_y.tolist(),
+            "weights": hist_weights.tolist(),
+            "span": hist_span,
+            "smooth": hist_bins,
+            "levels": hist_levels.tolist(),
+            "xcenters": hist_xcenters.tolist(),
+            "ycenters": hist_ycenters.tolist(),
+            "density": hist_density.tolist(),
+            "thresholds": hist_thresholds.tolist(),
+            "rtol": 1e-12,
+            "atol": 1e-12,
+        },
+    }
+    (FIXTURES / "plotting_core.json").write_text(
+        json.dumps(plotting_fixture, indent=2, sort_keys=True) + "\n"
+    )
 
     points = np.array(
         [

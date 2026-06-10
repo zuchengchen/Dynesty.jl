@@ -72,3 +72,7 @@ Stage 7 dynamic sampler utility fixtures cover `DynamicSamplerState`,
 `stopping_function`. The Monte Carlo stopping branch depends on language-specific
 random realizations and should be tested by Julia reproducibility/invariant
 checks as the full dynamic sampler engine is migrated.
+
+Plotting fixtures cover backend-neutral `check_span` and `_hist2d` numerical
+preparation. Full rendered plot smoke tests should remain optional behind
+`DYNESTY_RUN_PLOT_TESTS=true` once Plots.jl-based examples are added.

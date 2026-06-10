@@ -32,6 +32,8 @@ Current fixture files:
   and live-point-count helpers.
 - `fixtures/dynamic_core.json`: dynamic sampler state, weighting, batch-bound,
   and deterministic stopping-function cross-checks.
+- `fixtures/plotting_core.json`: backend-neutral plotting span and 2-D
+  histogram/contour preparation cross-checks.
 
 Current source snapshot:
 
