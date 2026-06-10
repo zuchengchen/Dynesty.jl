@@ -19,6 +19,7 @@ from __future__ import annotations
 import argparse
 import json
 import sys
+import time
 from pathlib import Path
 
 import numpy as np
@@ -59,6 +60,41 @@ def loglikelihood(theta: np.ndarray) -> float:
     return -0.5 * float(delta @ POSTERIOR_INVCOV @ delta)
 
 
+def default_work_size(cost: str) -> int:
+    if cost == "cheap":
+        return 0
+    if cost == "medium":
+        return 2_000
+    if cost == "heavy":
+        return 10_000
+    raise ValueError(f"likelihood cost must be cheap, medium, or heavy; got {cost}")
+
+
+class WorkLogLikelihood:
+    def __init__(self, likelihood_cost: str, sleep_ms: float, work_size: int | None):
+        self.likelihood_cost = likelihood_cost
+        self.work_size = (
+            default_work_size(likelihood_cost) if work_size is None else int(work_size)
+        )
+        if self.work_size < 0:
+            raise ValueError("work_size must be nonnegative")
+        self.sleep_seconds = float(sleep_ms) / 1000.0
+        if self.sleep_seconds < 0:
+            raise ValueError("sleep_ms must be nonnegative")
+
+    def __call__(self, theta: np.ndarray) -> float:
+        arr = np.asarray(theta)
+        ll = loglikelihood(arr)
+        acc = 0.0
+        for i in range(self.work_size):
+            x = float(arr[i % len(arr)])
+            y = (i + 1) * 1.0e-4
+            acc += np.sin(x + y) ** 2 + np.cos(x - y) ** 2
+        if self.sleep_seconds > 0:
+            time.sleep(self.sleep_seconds)
+        return ll + 0.0 * acc
+
+
 def normalized_weights(logwt: np.ndarray, logz: np.ndarray) -> np.ndarray:
     weights = np.exp(np.asarray(logwt, dtype=float) - float(logz[-1]))
     total = np.sum(weights)
@@ -95,7 +131,8 @@ def run_python_pe(args: argparse.Namespace):
         "propose_point": True,
         "update_bound": True,
     }
-    with dypool.Pool(args.nproc, loglikelihood, prior_transform) as pool:
+    loglike = WorkLogLikelihood(args.likelihood_cost, args.sleep_ms, args.work_size)
+    with dypool.Pool(args.nproc, loglike, prior_transform) as pool:
         sampler = dynesty.NestedSampler(
             pool.loglike,
             pool.prior_transform,
@@ -136,6 +173,11 @@ def parse_args(argv: list[str] | None = None) -> argparse.Namespace:
     parser.add_argument("--seed", type=int, default=20240611)
     parser.add_argument("--nproc", type=int, default=31)
     parser.add_argument("--queue-size", type=int, default=31)
+    parser.add_argument(
+        "--likelihood-cost", choices=("cheap", "medium", "heavy"), default="cheap"
+    )
+    parser.add_argument("--sleep-ms", type=float, default=0.0)
+    parser.add_argument("--work-size", type=int, default=None)
     args = parser.parse_args(argv)
     args.nlive_effective = args.quick_nlive if args.quick else args.nlive
     args.dlogz_effective = args.quick_dlogz if args.quick else args.dlogz
@@ -143,6 +185,10 @@ def parse_args(argv: list[str] | None = None) -> argparse.Namespace:
         parser.error("--nproc must be at least 1")
     if args.queue_size < 1:
         parser.error("--queue-size must be at least 1")
+    if args.sleep_ms < 0:
+        parser.error("--sleep-ms must be nonnegative")
+    if args.work_size is not None and args.work_size < 0:
+        parser.error("--work-size must be nonnegative")
     return args
 
 
@@ -163,6 +209,11 @@ def main(argv: list[str] | None = None) -> None:
             "pool": "dynesty.pool.Pool",
             "nproc": args.nproc,
             "queue_size": args.queue_size,
+            "likelihood_cost": args.likelihood_cost,
+            "sleep_ms": float(args.sleep_ms),
+            "work_size": default_work_size(args.likelihood_cost)
+            if args.work_size is None
+            else int(args.work_size),
             "quick": bool(args.quick),
             "nlive": int(args.nlive_effective),
             "dlogz": float(args.dlogz_effective),

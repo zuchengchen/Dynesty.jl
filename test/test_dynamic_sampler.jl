@@ -32,6 +32,24 @@ end
 dynamic_prior_identity(u) = copy(u)
 dynamic_loglike(v) = -sum(abs2, v .- 0.5)
 
+mutable struct DynamicCountingMapBackend <: Dynesty.AbstractMapBackend
+    queue_size::Int
+    calls::Int
+    sizes::Vector{Int}
+end
+
+DynamicCountingMapBackend(queue_size::Integer) =
+    DynamicCountingMapBackend(Int(queue_size), 0, Int[])
+
+Dynesty.backend_kind(::DynamicCountingMapBackend) = :dynamic_counting
+
+function Dynesty.map_ordered(backend::DynamicCountingMapBackend, f, inputs)
+    items = collect(inputs)
+    backend.calls += 1
+    push!(backend.sizes, length(items))
+    return Dynesty.map_ordered(SerialMapBackend(), f, items)
+end
+
 function dynamic_saved_record()
     record = RunRecord(; dynamic=true)
     samples_u = [
@@ -163,6 +181,28 @@ end
     )
     @test returned === alias_sampler
     @test Dynesty.isdynamic(results(alias_sampler))
+end
+
+@testset "Dynamic sampler proposal queue uses backend" begin
+    backend = DynamicCountingMapBackend(3)
+    sampler = DynamicSampler(
+        dynamic_loglike,
+        dynamic_prior_identity,
+        2;
+        nlive=16,
+        bound=:none,
+        sample=:unif,
+        rng=MersenneTwister(711),
+        map_backend=backend,
+    )
+    run_nested!(sampler; maxiter_init=6, dlogz_init=nothing, print_progress=false)
+    @test sampler.sampler isa NestedSampler
+    @test sampler.sampler.map_backend === backend
+    @test backend.calls > 1
+    @test backend.sizes[1] == 16
+    @test any(==(3), backend.sizes[2:end])
+    @test sampler.sampler.proposal_tasks_submitted > 0
+    @test sampler.sampler.proposal_batches_submitted > 0
 end
 
 @testset "Dynamic sampler blobs and checkpoint restore" begin

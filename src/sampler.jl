@@ -13,8 +13,8 @@ one-dimensional `Vector{Float64}` inputs.
 
 Sampler-level parallel configuration is available with `parallel`,
 `map_backend`, and `queue_size`. The backend is used for initial live-point
-prior-transform and likelihood evaluation; proposal kernels in `run_nested!`
-currently use the serial internal sampler path.
+prior-transform and likelihood evaluation and, when `queue_size > 1`, for the
+main proposal/evolve queue in `run_nested!`.
 """
 mutable struct NestedSampler{L, P}
     loglikelihood::L
@@ -60,6 +60,28 @@ mutable struct NestedSampler{L, P}
     plateau_mode::Bool
     plateau_counter::Int
     plateau_logdvol::Float64
+    proposal_queue::Vector{SamplerReturn}
+    proposal_queue_loglstar::Float64
+    proposal_tasks_submitted::Int
+    proposal_batches_submitted::Int
+end
+
+struct ProposalTaskInput
+    slot::Int
+    loglstar::Float64
+    u::Vector{Float64}
+    axes::Matrix{Float64}
+    bound::AbstractBound
+    internal_sampler::AbstractInternalSampler
+    ndim::Int
+    ncdim::Int
+end
+
+function Base.show(io::IO, input::ProposalTaskInput)
+    print(
+        io,
+        "ProposalTaskInput(slot=$(input.slot), loglstar=$(input.loglstar), sampler=$(typeof(input.internal_sampler)))",
+    )
 end
 
 function _option_symbol(value, allowed, kind::AbstractString)
@@ -542,6 +564,10 @@ function NestedSampler(
         false,
         0,
         -Inf,
+        SamplerReturn[],
+        -Inf,
+        0,
+        0,
     )
 end
 
@@ -555,6 +581,14 @@ function _loglike_wrapper(sampler::NestedSampler)
     return v -> _call_loglikelihood(
         sampler.loglikelihood, v; blob=sampler.blob, copy_inputs=sampler.copy_inputs
     )
+end
+
+function _ptform_wrapper(prior_transform, ndim::Int, copy_inputs::Bool)
+    return u -> _call_prior_transform(prior_transform, u, ndim; copy_inputs)
+end
+
+function _loglike_wrapper(loglikelihood, blob::Bool, copy_inputs::Bool)
+    return v -> _call_loglikelihood(loglikelihood, v; blob, copy_inputs)
 end
 
 function _update_bound!(sampler::NestedSampler; subset=nothing)
@@ -627,6 +661,65 @@ function _propose_live(sampler::NestedSampler, valid_indices)
     return u, axes
 end
 
+function _proposal_sample(
+    input::ProposalTaskInput,
+    prior_transform,
+    loglikelihood;
+    blob::Bool=false,
+    copy_inputs::Bool=false,
+    rng::AbstractRNG=Random.default_rng(),
+)
+    ptform = _ptform_wrapper(prior_transform, input.ndim, copy_inputs)
+    loglike = _loglike_wrapper(loglikelihood, blob, copy_inputs)
+    internal_sampler = input.internal_sampler
+    if internal_sampler isa UnitCubeSampler
+        return sample(
+            internal_sampler;
+            loglstar=input.loglstar,
+            prior_transform=ptform,
+            loglikelihood=loglike,
+            rng,
+        )
+    elseif internal_sampler isa UniformBoundSampler
+        return sample(
+            internal_sampler;
+            bound=input.bound,
+            loglstar=input.loglstar,
+            prior_transform=ptform,
+            loglikelihood=loglike,
+            ndim=input.ndim,
+            n_cluster=input.ncdim,
+            rng,
+        )
+    elseif internal_sampler isa RWalkSampler
+        return sample(
+            internal_sampler,
+            input.u;
+            loglstar=input.loglstar,
+            axes=input.axes,
+            prior_transform=ptform,
+            loglikelihood=loglike,
+            rng,
+        )
+    elseif internal_sampler isa Union{SliceSampler, RSliceSampler}
+        return sample(
+            internal_sampler,
+            input.u;
+            loglstar=input.loglstar,
+            axes=input.axes,
+            prior_transform=ptform,
+            loglikelihood=loglike,
+            rng,
+        )
+    else
+        throw(
+            ArgumentError(
+                "unsupported internal sampler $(typeof(internal_sampler))"
+            ),
+        )
+    end
+end
+
 function _proposal_sample(sampler::NestedSampler, loglstar::Real)
     ptform = _ptform_wrapper(sampler)
     loglike = _loglike_wrapper(sampler)
@@ -682,18 +775,119 @@ function _proposal_sample(sampler::NestedSampler, loglstar::Real)
     end
 end
 
-function _tune_internal_sampler!(sampler::NestedSampler, ret::SamplerReturn)
+function _tune_internal_sampler!(
+    sampler::NestedSampler, ret::SamplerReturn; update::Bool=true
+)
     sampler.unit_cube_sampling && return sampler
     if sampler.internal_sampler isa RWalkSampler
-        tune!(sampler.internal_sampler, ret.tuning_info; update=true)
+        tune!(sampler.internal_sampler, ret.tuning_info; update)
     elseif sampler.internal_sampler isa Union{SliceSampler, RSliceSampler}
-        tune_slice(sampler.internal_sampler, ret.tuning_info; update=true)
+        tune_slice(sampler.internal_sampler, ret.tuning_info; update)
     end
+    return sampler
+end
+
+function _proposal_queue_size(sampler::NestedSampler)
+    return max(1, getfield(sampler.map_backend, :queue_size))
+end
+
+_proposal_queue_enabled(sampler::NestedSampler) =
+    !(sampler.map_backend isa SerialMapBackend) && _proposal_queue_size(sampler) > 1
+
+function _clear_proposal_queue!(sampler::NestedSampler)
+    empty!(sampler.proposal_queue)
+    sampler.proposal_queue_loglstar = -Inf
+    return sampler
+end
+
+function _proposal_task_inputs(sampler::NestedSampler, loglstar::Real, ntasks::Int)
+    ntasks > 0 || return ProposalTaskInput[]
+    loglstar_f = Float64(loglstar)
+    if sampler.internal_sampler isa Union{RWalkSampler, SliceSampler, RSliceSampler}
+        valid = findall(>(loglstar_f), sampler.live_logl)
+        isempty(valid) && throw(
+            ErrorException(
+                "no live points are above the likelihood constraint; likelihood plateau or exhausted support",
+            ),
+        )
+    else
+        valid = Int[]
+    end
+
+    inputs = Vector{ProposalTaskInput}(undef, ntasks)
+    for slot in 1:ntasks
+        u = zeros(Float64, sampler.ndim)
+        axes = Matrix{Float64}(I, sampler.ncdim, sampler.ncdim)
+        if sampler.internal_sampler isa Union{RWalkSampler, SliceSampler, RSliceSampler}
+            u, axes = _propose_live(sampler, valid)
+        end
+        inputs[slot] = ProposalTaskInput(
+            slot,
+            loglstar_f,
+            u,
+            axes,
+            deepcopy(sampler.bound),
+            deepcopy(sampler.internal_sampler),
+            sampler.ndim,
+            sampler.ncdim,
+        )
+    end
+    return inputs
+end
+
+function _proposal_batch_seed!(rng::AbstractRNG)
+    return Int(rand(rng, UInt64) % UInt64(typemax(Int)))
+end
+
+function _fill_proposal_queue!(sampler::NestedSampler, loglstar::Real)
+    isempty(sampler.proposal_queue) || return sampler
+    _update_bound_if_needed!(sampler, loglstar; ncall=sampler.ncall)
+    ntasks = _proposal_queue_size(sampler)
+    inputs = _proposal_task_inputs(sampler, loglstar, ntasks)
+    seed = _proposal_batch_seed!(sampler.rng)
+    mapped = map_with_rng(
+        sampler.map_backend,
+        (input, rng) -> _proposal_sample(
+            input,
+            sampler.prior_transform,
+            sampler.loglikelihood;
+            blob=sampler.blob,
+            copy_inputs=sampler.copy_inputs,
+            rng,
+        ),
+        inputs;
+        seed,
+    )
+    empty!(sampler.proposal_queue)
+    for ret in mapped
+        ret isa SamplerReturn ||
+            throw(ErrorException("proposal task returned $(typeof(ret)), expected SamplerReturn"))
+        push!(sampler.proposal_queue, ret)
+    end
+    sampler.proposal_queue_loglstar = Float64(loglstar)
+    sampler.proposal_tasks_submitted += length(inputs)
+    sampler.proposal_batches_submitted += 1
     return sampler
 end
 
 function _new_point!(sampler::NestedSampler, loglstar::Real)
     ncall_accum = 0
+    if _proposal_queue_enabled(sampler)
+        while true
+            _fill_proposal_queue!(sampler, loglstar)
+            ret = popfirst!(sampler.proposal_queue)
+            ncall_accum += ret.ncalls
+            _tune_internal_sampler!(sampler, ret; update=isempty(sampler.proposal_queue))
+            if isempty(sampler.proposal_queue)
+                _update_bound_if_needed!(
+                    sampler, loglstar; ncall=sampler.ncall + ncall_accum
+                )
+            end
+            if ret.logl > loglstar
+                return ret, ncall_accum
+            end
+        end
+    end
     while true
         _update_bound_if_needed!(sampler, loglstar; ncall=sampler.ncall + ncall_accum)
         ret = _proposal_sample(sampler, loglstar)
@@ -1092,6 +1286,10 @@ function sampler_snapshot(sampler::NestedSampler)
         :plateau_mode => sampler.plateau_mode,
         :plateau_counter => sampler.plateau_counter,
         :plateau_logdvol => sampler.plateau_logdvol,
+        :proposal_queue => SamplerReturn[],
+        :proposal_queue_loglstar => sampler.proposal_queue_loglstar,
+        :proposal_tasks_submitted => sampler.proposal_tasks_submitted,
+        :proposal_batches_submitted => sampler.proposal_batches_submitted,
     )
 end
 
@@ -1140,5 +1338,9 @@ function _restore_nested_sampler(state::AbstractDict, loglikelihood, prior_trans
         Bool(state[:plateau_mode]),
         Int(state[:plateau_counter]),
         Float64(state[:plateau_logdvol]),
+        Vector{SamplerReturn}(get(state, :proposal_queue, SamplerReturn[])),
+        Float64(get(state, :proposal_queue_loglstar, -Inf)),
+        Int(get(state, :proposal_tasks_submitted, 0)),
+        Int(get(state, :proposal_batches_submitted, 0)),
     )
 end

@@ -219,6 +219,70 @@ end
 end
 
 @testset "Static sampler threaded reproducibility and checkpoint restore" begin
+    function serial_queue1_run(seed)
+        sampler = NestedSampler(
+            static_loglike_gaussian,
+            static_prior_identity,
+            2;
+            nlive=18,
+            bound=:none,
+            sample=:unif,
+            rng=MersenneTwister(seed),
+            parallel=:serial,
+            queue_size=1,
+        )
+        run_nested!(sampler; maxiter=12, dlogz=nothing, add_live=true)
+        res = results(sampler)
+        return (
+            logl=copy(res.logl),
+            samples_u=copy(res.samples_u),
+            logz=copy(res.logz),
+            ncall=copy(res.ncall),
+            tasks=sampler.proposal_tasks_submitted,
+        )
+    end
+
+    serial_first = serial_queue1_run(69)
+    serial_second = serial_queue1_run(69)
+    @test serial_first.logl == serial_second.logl
+    @test serial_first.samples_u == serial_second.samples_u
+    @test serial_first.logz == serial_second.logz
+    @test serial_first.ncall == serial_second.ncall
+    @test serial_first.tasks == 0
+
+    function threaded_queue_run(seed)
+        sampler = NestedSampler(
+            static_loglike_gaussian,
+            static_prior_identity,
+            2;
+            nlive=28,
+            bound=:none,
+            sample=:unif,
+            rng=MersenneTwister(seed),
+            parallel=:threads,
+            queue_size=3,
+        )
+        run_nested!(sampler; maxiter=20, dlogz=nothing, add_live=true)
+        res = results(sampler)
+        return (
+            logl=copy(res.logl),
+            samples_u=copy(res.samples_u),
+            logz=copy(res.logz),
+            ncall=copy(res.ncall),
+            tasks=sampler.proposal_tasks_submitted,
+        )
+    end
+
+    queued_first = threaded_queue_run(70)
+    queued_second = threaded_queue_run(70)
+    queued_other = threaded_queue_run(170)
+    @test queued_first.logl == queued_second.logl
+    @test queued_first.samples_u == queued_second.samples_u
+    @test queued_first.logz == queued_second.logz
+    @test queued_first.ncall == queued_second.ncall
+    @test queued_first.tasks > 0
+    @test queued_first.logl != queued_other.logl
+
     function threaded_run(seed)
         sampler = NestedSampler(
             static_loglike_gaussian,
@@ -268,10 +332,70 @@ end
         @test restored isa NestedSampler
         @test restored.map_backend isa ThreadedMapBackend
         @test restored.map_backend.queue_size == 2
+        @test restored.proposal_tasks_submitted == sampler.proposal_tasks_submitted
+        @test restored.proposal_batches_submitted == sampler.proposal_batches_submitted
         run_nested!(restored; maxiter=3, dlogz=nothing, add_live=true)
         @test restored.added_live
         @test length(results(restored).logl) == 5 + 3 + restored.nlive
     end
+end
+
+@testset "Static sampler serial/threaded agreement and proposal errors" begin
+    function short_run(parallel, queue_size, seed)
+        sampler = NestedSampler(
+            static_loglike_gaussian,
+            static_prior_identity,
+            2;
+            nlive=32,
+            bound=:none,
+            sample=:unif,
+            rng=MersenneTwister(seed),
+            parallel,
+            queue_size,
+        )
+        run_nested!(sampler; maxiter=24, dlogz=nothing, add_live=true)
+        res = results(sampler)
+        weights = importance_weights(res)
+        mean = vec(sum(res.samples .* reshape(weights, :, 1); dims=1))
+        return sampler, res, mean
+    end
+
+    serial_sampler, serial_res, serial_mean = short_run(:serial, 1, 88)
+    threaded_sampler, threaded_res, threaded_mean = short_run(:threads, 3, 88)
+    @test serial_sampler.proposal_tasks_submitted == 0
+    @test threaded_sampler.proposal_tasks_submitted > 0
+    @test all(isfinite, threaded_res.logz)
+    @test abs(serial_res.logz[end] - threaded_res.logz[end]) < 2.0
+    @test maximum(abs.(serial_mean .- threaded_mean)) < 0.3
+    @test length(threaded_res.logl) == 24 + threaded_sampler.nlive
+
+    calls = Threads.Atomic{Int}(0)
+    failing_loglike = function (v)
+        current = Threads.atomic_add!(calls, 1) + 1
+        current > 6 && error("proposal likelihood marker")
+        return -sum(abs2, v .- 0.5)
+    end
+    sampler = NestedSampler(
+        failing_loglike,
+        static_prior_identity,
+        2;
+        nlive=6,
+        bound=:none,
+        sample=:unif,
+        rng=MersenneTwister(89),
+        parallel=:threads,
+        queue_size=2,
+    )
+    err = try
+        run_nested!(sampler; maxiter=2, dlogz=nothing, add_live=false)
+        nothing
+    catch caught
+        caught
+    end
+    @test err isa MapTaskError
+    @test err.backend == :threaded
+    @test occursin("ProposalTaskInput", sprint(showerror, err))
+    @test occursin("proposal likelihood marker", sprint(showerror, err))
 end
 
 @testset "Static sampler bounds, blobs, and checkpoint restore" begin

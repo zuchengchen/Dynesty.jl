@@ -1,5 +1,27 @@
 using Dynesty
+using Distributed
+using Random
 using Test
+
+mutable struct CountingMapBackend <: Dynesty.AbstractMapBackend
+    queue_size::Int
+    calls::Int
+    sizes::Vector{Int}
+end
+
+CountingMapBackend(queue_size::Integer) = CountingMapBackend(Int(queue_size), 0, Int[])
+
+Dynesty.backend_kind(::CountingMapBackend) = :counting
+
+function Dynesty.map_ordered(backend::CountingMapBackend, f, inputs)
+    items = collect(inputs)
+    backend.calls += 1
+    push!(backend.sizes, length(items))
+    return Dynesty.map_ordered(SerialMapBackend(), f, items)
+end
+
+dist_parallel_prior(u) = copy(u)
+dist_parallel_loglike(v) = -sum(abs2, v .- 0.5)
 
 @testset "Map backends" begin
     serial = SerialMapBackend()
@@ -42,4 +64,73 @@ end
     @test err.index == 2
     @test occursin("task index 2", sprint(showerror, err))
     @test occursin("boom", sprint(showerror, err))
+end
+
+@testset "Proposal/evolve queue uses map backend" begin
+    backend = CountingMapBackend(3)
+    sampler = NestedSampler(
+        v -> -sum(abs2, v .- 0.5),
+        u -> copy(u),
+        2;
+        nlive=14,
+        bound=:none,
+        sample=:unif,
+        rng=MersenneTwister(910),
+        map_backend=backend,
+    )
+    @test backend.calls == 1
+    @test backend.sizes == [14]
+
+    run_nested!(sampler; maxiter=5, dlogz=nothing, add_live=false)
+    @test backend.calls > 1
+    @test any(==(3), backend.sizes[2:end])
+    @test sampler.proposal_tasks_submitted >= 3
+    @test sampler.proposal_batches_submitted >= 1
+    @test length(results(sampler).logl) == 5
+end
+
+if get(ENV, "DYNESTY_RUN_DISTRIBUTED_TESTS", "false") == "true"
+    @testset "Distributed proposal/evolve queue" begin
+        added_workers = Int[]
+        try
+            needed = max(0, 2 - length(Distributed.workers()))
+            if needed > 0
+                added_workers = Distributed.addprocs(
+                    needed; exeflags=`--project=$(Base.active_project())`
+                )
+            end
+            for worker in Distributed.workers()
+                Distributed.remotecall_wait(
+                    Core.eval,
+                    worker,
+                    Main,
+                    quote
+                        using Dynesty
+                        dist_parallel_prior(u) = copy(u)
+                        dist_parallel_loglike(v) = -sum(abs2, v .- 0.5)
+                    end,
+                )
+            end
+            backend = DistributedMapBackend(;
+                workers=Distributed.workers()[1:min(2, length(Distributed.workers()))],
+                queue_size=2,
+            )
+            sampler = NestedSampler(
+                dist_parallel_loglike,
+                dist_parallel_prior,
+                2;
+                nlive=12,
+                bound=:none,
+                sample=:unif,
+                rng=MersenneTwister(920),
+                map_backend=backend,
+            )
+            run_nested!(sampler; maxiter=3, dlogz=nothing, add_live=false)
+            @test sampler.proposal_tasks_submitted > 0
+            @test sampler.proposal_batches_submitted > 0
+            @test length(results(sampler).logl) == 3
+        finally
+            !isempty(added_workers) && Distributed.rmprocs(added_workers)
+        end
+    end
 end

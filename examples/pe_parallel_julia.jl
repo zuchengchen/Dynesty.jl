@@ -35,6 +35,36 @@ function loglikelihood(theta)
     return -0.5 * dot(delta, POSTERIOR_INVCOV * delta)
 end
 
+function _default_work_size(cost::AbstractString)
+    if cost == "cheap"
+        return 0
+    elseif cost == "medium"
+        return 2_000
+    elseif cost == "heavy"
+        return 10_000
+    else
+        throw(ArgumentError("likelihood cost must be cheap, medium, or heavy; got $cost"))
+    end
+end
+
+function make_loglikelihood(; likelihood_cost::AbstractString="cheap", sleep_ms::Real=0.0, work_size=nothing)
+    work = isnothing(work_size) ? _default_work_size(likelihood_cost) : Int(work_size)
+    sleep_seconds = Float64(sleep_ms) / 1000
+    work >= 0 || throw(ArgumentError("work_size must be nonnegative"))
+    sleep_seconds >= 0 || throw(ArgumentError("sleep_ms must be nonnegative"))
+    return theta -> begin
+        ll = loglikelihood(theta)
+        acc = 0.0
+        @inbounds for i in 1:work
+            x = theta[mod1(i, length(theta))]
+            y = i * 1.0e-4
+            acc += sin(x + y)^2 + cos(x - y)^2
+        end
+        sleep_seconds > 0 && sleep(sleep_seconds)
+        return ll + 0.0 * acc
+    end
+end
+
 function _json_value(value)
     if value isa AbstractString
         return "\"" * replace(value, "\\" => "\\\\", "\"" => "\\\"") * "\""
@@ -103,6 +133,9 @@ function parse_cli(args)
         :quick_dlogz => 0.5,
         :seed => 20240610,
         :queue_size => min(max(Threads.nthreads(), 1), 31),
+        :likelihood_cost => "cheap",
+        :sleep_ms => 0.0,
+        :work_size => nothing,
         :quick => false,
     )
     i = 1
@@ -132,6 +165,15 @@ function parse_cli(args)
         elseif arg == "--queue-size"
             opts[:queue_size] = parse(Int, args[i + 1])
             i += 2
+        elseif arg == "--likelihood-cost"
+            opts[:likelihood_cost] = args[i + 1]
+            i += 2
+        elseif arg == "--sleep-ms"
+            opts[:sleep_ms] = parse(Float64, args[i + 1])
+            i += 2
+        elseif arg == "--work-size"
+            opts[:work_size] = parse(Int, args[i + 1])
+            i += 2
         else
             throw(ArgumentError("unknown argument $arg"))
         end
@@ -143,8 +185,13 @@ end
 
 function run_julia_pe(opts)
     queue_size = Int(opts[:queue_size])
+    ll = make_loglikelihood(;
+        likelihood_cost=String(opts[:likelihood_cost]),
+        sleep_ms=Float64(opts[:sleep_ms]),
+        work_size=opts[:work_size],
+    )
     sampler = NestedSampler(
-        loglikelihood,
+        ll,
         prior_transform,
         length(TRUE_THETA);
         nlive=Int(opts[:nlive_effective]),
@@ -163,6 +210,9 @@ function run_julia_pe(opts)
     run_nested!(
         sampler; dlogz=Float64(opts[:dlogz_effective]), print_progress=false, add_live=true
     )
+    if queue_size > 1 && sampler.proposal_tasks_submitted == 0
+        error("expected proposal/evolve backend use, but no proposal tasks were submitted")
+    end
     res = results(sampler)
     weights = importance_weights(res)
     weights ./= sum(weights)
@@ -185,6 +235,13 @@ function main(args=ARGS)
             :backend => "ThreadedMapBackend",
             :queue_size => fit.sampler.map_backend.queue_size,
             :threads => Threads.nthreads(),
+            :proposal_evolve_parallel => fit.sampler.proposal_tasks_submitted > 0,
+            :proposal_tasks_submitted => fit.sampler.proposal_tasks_submitted,
+            :proposal_batches_submitted => fit.sampler.proposal_batches_submitted,
+            :likelihood_cost => String(opts[:likelihood_cost]),
+            :sleep_ms => Float64(opts[:sleep_ms]),
+            :work_size =>
+                isnothing(opts[:work_size]) ? _default_work_size(String(opts[:likelihood_cost])) : Int(opts[:work_size]),
             :quick => Bool(opts[:quick]),
             :nlive => Int(opts[:nlive_effective]),
             :dlogz => Float64(opts[:dlogz_effective]),

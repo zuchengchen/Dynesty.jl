@@ -1,5 +1,7 @@
 module Dynesty
 
+import JSON3
+
 export DelayTimer,
     DistributedMapBackend,
     DynamicNestedSampler,
