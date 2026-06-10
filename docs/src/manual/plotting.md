@@ -17,3 +17,7 @@ data = runplot(results(sampler))
 Pass the returned object to a RecipesBase-compatible plotting backend such as
 Plots.jl in user code. Default package tests validate the data preparation and
 recipes without making Plots.jl a core dependency.
+
+For `boundplot` and `cornerbound`, `show_live=true` reconstructs static live
+points from static `Results`. Dynamic `Results` can draw saved bounds with
+`show_live=false`.

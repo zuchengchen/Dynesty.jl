@@ -323,4 +323,23 @@ end
         [1, 2];
         idx=1,
     )
+    dynamic_res = Results(;
+        samples=res.samples,
+        samples_u=res.samples_u,
+        samples_id=res.samples_id,
+        samples_it=res.samples_it,
+        samples_n=fill(res.nlive, length(res.logl)),
+        logl=res.logl,
+        logvol=res.logvol,
+        logwt=res.logwt,
+        logz=res.logz,
+        logzerr=res.logzerr,
+        bound=res.bound,
+        bound_iter=res.bound_iter,
+        samples_bound=res.samples_bound,
+    )
+    dynamic_bound = boundplot(dynamic_res, [1, 2]; idx=1, ndraws=5, rng=MersenneTwister(15))
+    @test size(dynamic_bound.draws) == (5, 2)
+    @test isnothing(dynamic_bound.live)
+    @test_throws ArgumentError boundplot(dynamic_res, [1, 2]; idx=1, show_live=true)
 end

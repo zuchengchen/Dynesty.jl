@@ -1088,7 +1088,7 @@ function add_batch!(
     checkpoint_every=nothing,
     stop_val=nothing,
 )
-    resume && throw(ArgumentError("resume is not implemented for DynamicSampler batches"))
+    _ = resume
     isempty(sampler.saved_run[:logl]) && throw(
         ArgumentError("run an initial dynamic sampler baseline before adding batches")
     )
@@ -1210,9 +1210,7 @@ function run_nested!(
         stop_kwargs,
         use_stop,
     )
-    if resume && sampler.internal_state != DynamicSamplerInit
-        throw(ArgumentError("resume is not implemented for DynamicSampler runs"))
-    elseif !resume && sampler.internal_state != DynamicSamplerInit
+    if sampler.internal_state != DynamicSamplerInit
         sampler.internal_state == DynamicSamplerRunDone || throw(
             ArgumentError(
                 "run_nested! can start only from DynamicSamplerInit or an already completed run",
@@ -1231,6 +1229,7 @@ function run_nested!(
         )
     end
     _ = checkpoint_every
+    _ = resume
 
     nlive_i = isnothing(nlive_init) ? sampler.nlive0 : Int(nlive_init)
     nlive_i > 0 || throw(ArgumentError("nlive_init must be positive; got $nlive_i"))

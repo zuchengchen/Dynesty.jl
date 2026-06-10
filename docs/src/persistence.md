@@ -17,7 +17,7 @@ configuration, RNG state, bound state, internal sampler state, results state,
 live/dead points, proposal statistics, batch/dynamic state, and any documented
 options used to skip unserializable blobs or transformed samples.
 
-## Stage 1 Status
+## Status
 
 Implemented:
 
@@ -30,7 +30,6 @@ Implemented:
 - Native `NestedSampler` and `DynamicSampler` snapshots, including RNG state,
   bounds, live/dead samples, proposal statistics, batch metadata, and restored
   dynamic/static sampler objects with reattached callables.
-
-Pending for sampler stages:
-
-- HDF5 evaluation-history flushing in `DynestyHDF5Ext`.
+- HDF5 evaluation-history flushing through the `DynestyHDF5Ext` weak-dependency
+  extension when HDF5.jl is loaded. The extension appends
+  `evaluation_u`, `evaluation_v`, and `evaluation_logl` datasets.

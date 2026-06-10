@@ -999,7 +999,9 @@ end
 
 function _reconstruct_static_live_u(res::Results, kind::Symbol, value::Int)
     haskey(res, :nlive) || throw(
-        ArgumentError("live point reconstruction for dynamic results is not implemented"),
+        ArgumentError(
+            "show_live=true is supported only for static Results with nlive; dynamic Results can still draw saved bounds with show_live=false",
+        ),
     )
     haskey(res, :samples_id) ||
         throw(ArgumentError("cannot reconstruct live points without samples_id"))

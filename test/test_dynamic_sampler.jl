@@ -200,6 +200,19 @@ end
         @test restored_res.samples_n == res.samples_n
         @test restored_res.batch_logl_bounds == res.batch_logl_bounds
         @test n_effective(restored) ≈ n_effective(sampler)
+
+        run_nested!(
+            restored;
+            nlive_batch=5,
+            maxbatch=1,
+            maxiter_batch=3,
+            maxcall_batch=150,
+            use_stop=false,
+            resume=true,
+            print_progress=false,
+        )
+        @test restored.batch == sampler.batch + 1
+        @test sort(unique(results(restored).samples_batch)) == [0, 1]
     end
 end
 

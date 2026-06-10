@@ -316,11 +316,11 @@ function (ll::LogLikelihood)(x)
     return LoglOutput(ll.f(input), ll.blob)
 end
 
-function history_init!(ll::LogLikelihood)
+function history_init!(ll)
     throw(ArgumentError("evaluation history HDF5 support requires loading HDF5.jl"))
 end
 
-function history_save!(ll::LogLikelihood)
+function history_save!(ll)
     ll.save_evaluation_history || return ll
     throw(ArgumentError("evaluation history HDF5 support requires loading HDF5.jl"))
 end

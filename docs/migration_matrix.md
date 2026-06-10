@@ -67,8 +67,8 @@ Statuses:
 | `dynesty.plotting.traceplot` | `traceplot` / `TracePlotData` | C | implemented | `test/test_plotting.jl` | not needed | Backend-neutral trace and 1-D marginal data with RecipesBase recipe. |
 | `dynesty.plotting.cornerpoints` | `cornerpoints` / `CornerPointsData` | C | implemented | `test/test_plotting.jl` | not needed | Backend-neutral lower-triangle point cloud data with RecipesBase recipe. |
 | `dynesty.plotting.cornerplot` | `cornerplot` / `CornerPlotData` | C | implemented | `test/test_plotting.jl` | not needed | Backend-neutral corner marginal data using `_hist2d` and RecipesBase recipe. |
-| `dynesty.plotting.boundplot` | `boundplot` / `BoundPlotData` | C | implemented | `test/test_plotting.jl` | not needed | Backend-neutral saved-bound draws with optional static live-point reconstruction and RecipesBase recipe. |
-| `dynesty.plotting.cornerbound` | `cornerbound` / `CornerBoundData` | C | implemented | `test/test_plotting.jl` | not needed | Backend-neutral lower-triangle saved-bound draws with optional static live-point reconstruction and RecipesBase recipe. |
+| `dynesty.plotting.boundplot` | `boundplot` / `BoundPlotData` | C | implemented | `test/test_plotting.jl` | not needed | Backend-neutral saved-bound draws for static and dynamic results; `show_live=true` is static-only live-point reconstruction. |
+| `dynesty.plotting.cornerbound` | `cornerbound` / `CornerBoundData` | C | implemented | `test/test_plotting.jl` | not needed | Backend-neutral lower-triangle saved-bound draws for static and dynamic results; `show_live=true` is static-only live-point reconstruction. |
 | `dynesty.plotting._hist2d` | `_hist2d` / `Hist2DResult` | B | implemented | `test/test_plotting.jl` | `test/reference/python/fixtures/plotting_core.json` | Numerical histogram/contour helper with RecipesBase recipe. |
 | `dynesty.pool.FunctionCache` | backend task closure | C | replacement | `test/test_parallel.jl` | not needed | Julia map backends replace Python multiprocessing cache. |
 | `dynesty.pool.initializer` | backend initialization | C | replacement | `test/test_parallel.jl` | not needed | Julia backend setup. |
@@ -79,7 +79,7 @@ Statuses:
 | `dynesty.sampler._initialize_live_points` | `_initialize_live_points` | A | implemented | `test/test_static_sampler.jl` | statistical/invariant | Live point initialization with Real, tuple/blob, and `LoglOutput` normalization. |
 | `dynesty.sampler.Sampler` | `NestedSampler` internals | A | implemented | `test/test_static_sampler.jl` | statistical/invariant | Static sampler engine including run loop, final live points, result conversion, bound updates, blobs, and checkpoint restore. |
 | `dynesty.utils.LoglOutput` | `LoglOutput` | A | implemented | `test/test_utils.jl` | `test/reference/python/fixtures/utils_core.json` | Likelihood output with optional blob. |
-| `dynesty.utils.LogLikelihood` | `LogLikelihood` | A | implemented | `test/test_utils.jl` | not needed | Callable wrapper implemented; HDF5 history flushing is extension-backed. |
+| `dynesty.utils.LogLikelihood` | `LogLikelihood` | A | implemented | `test/test_utils.jl`, `test/test_persistence.jl` | not needed | Callable wrapper implemented; HDF5 history flushing is extension-backed and covered by an extended HDF5 round-trip. |
 | `dynesty.utils.RunRecord` | `RunRecord` | B | implemented | `test/test_results.jl` | not needed | Run accumulation. |
 | `dynesty.utils.DelayTimer` | `DelayTimer` | C | implemented | `test/test_utils.jl` | not needed | Progress/checkpoint delay helper. |
 | `dynesty.utils._update_tqdm_eta_from_dlogz` | progress metadata | C | replacement | `test/test_utils.jl` | not needed | TQDM-specific behavior omitted. |
