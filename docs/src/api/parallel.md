@@ -71,10 +71,14 @@ evidence, bounds, counters, and tuning state serially.
 Queued candidates are generated from a snapshot of the current bound,
 internal-sampler configuration, and selected live point. If a later iteration
 has a higher likelihood threshold, the candidate is still checked against that
-new threshold before acceptance. Stage 1 pool usage policy records the
-`bounds` and `stopping` switches; later parallel refinement stages use those
-opt-in flags for bound-update bootstrap work and dynamic stopping Monte Carlo
-work.
+new threshold before acceptance.
+
+Bound refreshes remain serial by default. With `pool_usage=PoolUsage(bounds=true)`
+or `use_pool=Dict("update_bound" => true)`, built-in ellipsoid and friends
+bounds can use the configured backend for bootstrap tasks when `bootstrap > 0`.
+The bound object itself is still mutated only on the main sampler task; backend
+workers receive point-matrix snapshots and deterministic per-task RNGs. Custom
+bounds and non-bootstrap bound refreshes continue to run serially.
 
 Reproducibility is guaranteed for the same Julia seed, backend kind, backend
 configuration, thread count, `queue_size`, and `PoolUsage`. Trajectories are
@@ -100,7 +104,9 @@ Key fields include:
 - `proposal_tasks_submitted`, `proposal_batches_submitted`,
   `proposal_wall_time`, and `proposal_backend_wall_time` for proposal/evolve
   queue work.
-- `bound_update_count` and `bound_update_wall_time` for bound refreshes.
+- `bound_update_count`, `bound_update_wall_time`, and
+  `bound_update_backend_wall_time` for bound refreshes and opt-in bootstrap
+  backend work.
 - `stop_function_count` and `stop_function_wall_time` for dynamic stopping
   checks.
 - `map_backend_calls` and `map_backend_wall_time` for backend calls visible to

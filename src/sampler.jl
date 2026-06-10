@@ -607,17 +607,43 @@ function _loglike_wrapper(loglikelihood, blob::Bool, copy_inputs::Bool)
     return v -> _call_loglikelihood(loglikelihood, v; blob, copy_inputs)
 end
 
+_bound_update_backend_supported(::AbstractBound) = false
+_bound_update_backend_supported(::Union{Ellipsoid, MultiEllipsoid, RadFriends, SupFriends}) = true
+
+function _bound_update_backend(sampler::NestedSampler)
+    sampler.pool_usage.bounds || return nothing
+    sampler.bound_bootstrap > 0 || return nothing
+    sampler.map_backend isa SerialMapBackend && return nothing
+    _bound_update_backend_supported(sampler.bound) || return nothing
+    return sampler.map_backend
+end
+
 function _update_bound!(sampler::NestedSampler; subset=nothing)
     rows = isnothing(subset) ? collect(1:sampler.nlive) : collect(subset)
     isempty(rows) &&
         throw(ArgumentError("cannot update bound with an empty live-point subset"))
     points = sampler.live_u[rows, 1:sampler.ncdim]
     update_start = time()
-    update!(sampler.bound, points; rng=sampler.rng, bootstrap=sampler.bound_bootstrap)
+    backend_time = Ref(0.0)
+    backend = _bound_update_backend(sampler)
+    if isnothing(backend)
+        update!(sampler.bound, points; rng=sampler.rng, bootstrap=sampler.bound_bootstrap)
+    else
+        update!(
+            sampler.bound,
+            points;
+            rng=sampler.rng,
+            bootstrap=sampler.bound_bootstrap,
+            map_backend=backend,
+            backend_time_ref=backend_time,
+        )
+    end
     if sampler.bound_enlarge != 1.0
         scale_to_logvol!(sampler.bound, sampler.bound.logvol + log(sampler.bound_enlarge))
     end
-    _record_bound_update!(sampler.parallel_stats, time() - update_start)
+    _record_bound_update!(
+        sampler.parallel_stats, time() - update_start; backend_time=backend_time[]
+    )
     return sampler.bound
 end
 

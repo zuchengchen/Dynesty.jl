@@ -7,6 +7,21 @@ import Base: contains
 
 abstract type AbstractBound end
 
+struct BoundBootstrapTaskInput
+    slot::Int
+    kind::Symbol
+    points::Matrix{Float64}
+    multi::Bool
+    ftype::Symbol
+end
+
+function Base.show(io::IO, input::BoundBootstrapTaskInput)
+    print(
+        io,
+        "BoundBootstrapTaskInput(slot=$(input.slot), kind=$(input.kind), npoints=$(size(input.points, 1)), ndim=$(size(input.points, 2)))",
+    )
+end
+
 """
     UnitCube(ndim)
 
@@ -516,6 +531,8 @@ function update!(
     rng::AbstractRNG=Random.default_rng(),
     bootstrap::Integer=0,
     mc_integrate::Bool=false,
+    map_backend=nothing,
+    backend_time_ref=nothing,
 )
     new_ell = bounding_ellipsoid(points)
     ell.ndim = new_ell.ndim
@@ -526,9 +543,10 @@ function update!(
     ell.axlens = new_ell.axlens
     ell.logvol = new_ell.logvol
     if bootstrap > 0
-        expand = maximum(
-            _ellipsoid_bootstrap_expand(false, points; rng) for _ in 1:Int(bootstrap)
+        expand, backend_time = _ellipsoid_bootstrap_expand_max(
+            false, points, Int(bootstrap); rng, map_backend
         )
+        !isnothing(backend_time_ref) && (backend_time_ref[] += backend_time)
         if expand > 1.0
             scale_to_logvol!(ell, ell.logvol + ell.ndim * log(expand))
         end
@@ -727,6 +745,8 @@ function update!(
     rng::AbstractRNG=Random.default_rng(),
     bootstrap::Integer=0,
     mc_integrate::Bool=false,
+    map_backend=nothing,
+    backend_time_ref=nothing,
 )
     new_multi = bounding_ellipsoids(points)
     multi.ndim = new_multi.ndim
@@ -738,9 +758,10 @@ function update!(
     multi.logvol_ells = new_multi.logvol_ells
     multi.logvol = new_multi.logvol
     if bootstrap > 0
-        expand = maximum(
-            _ellipsoid_bootstrap_expand(true, points; rng) for _ in 1:Int(bootstrap)
+        expand, backend_time = _ellipsoid_bootstrap_expand_max(
+            true, points, Int(bootstrap); rng, map_backend
         )
+        !isnothing(backend_time_ref) && (backend_time_ref[] += backend_time)
         if expand > 1.0
             scale_to_logvol!(multi, multi.logvol + multi.ndim * log(expand))
         end
@@ -1000,6 +1021,77 @@ function _ellipsoid_bootstrap_expand(
     return max(1.0, maximum(dists))
 end
 
+function _bound_bootstrap_seed!(rng::AbstractRNG)
+    return Int(rand(rng, UInt64) % UInt64(typemax(Int)))
+end
+
+function _bound_bootstrap_value(input::BoundBootstrapTaskInput, rng::AbstractRNG)
+    if input.kind === :ellipsoid
+        return _ellipsoid_bootstrap_expand(input.multi, input.points; rng)
+    elseif input.kind === :friends
+        return _friends_bootstrap_radius(input.points, input.ftype; rng)
+    else
+        throw(ArgumentError("unsupported bound bootstrap task kind $(repr(input.kind))"))
+    end
+end
+
+function _bound_bootstrap_max(
+    kind::Symbol,
+    points::AbstractMatrix{<:Real},
+    ntasks::Int;
+    rng::AbstractRNG,
+    map_backend=nothing,
+    multi::Bool=false,
+    ftype::Symbol=:balls,
+)
+    ntasks > 0 || throw(ArgumentError("ntasks must be positive; got $ntasks"))
+    pts = Matrix{Float64}(points)
+    if isnothing(map_backend)
+        value = maximum(
+            _bound_bootstrap_value(
+                BoundBootstrapTaskInput(slot, kind, pts, multi, ftype), rng
+            ) for slot in 1:ntasks
+        )
+        return Float64(value), 0.0
+    end
+    inputs = [
+        BoundBootstrapTaskInput(slot, kind, pts, multi, ftype) for slot in 1:ntasks
+    ]
+    seed = _bound_bootstrap_seed!(rng)
+    backend_start = time()
+    values = map_with_rng(
+        map_backend,
+        (input, task_rng) -> _bound_bootstrap_value(input, task_rng),
+        inputs;
+        seed,
+    )
+    return maximum(Float64.(values)), time() - backend_start
+end
+
+function _ellipsoid_bootstrap_expand_max(
+    multi::Bool,
+    points::AbstractMatrix{<:Real},
+    ntasks::Int;
+    rng::AbstractRNG,
+    map_backend=nothing,
+)
+    return _bound_bootstrap_max(
+        :ellipsoid, points, ntasks; rng, map_backend, multi, ftype=:balls
+    )
+end
+
+function _friends_bootstrap_radius_max(
+    points::AbstractMatrix{<:Real},
+    ftype::Symbol,
+    ntasks::Int;
+    rng::AbstractRNG,
+    map_backend=nothing,
+)
+    return _bound_bootstrap_max(
+        :friends, points, ntasks; rng, map_backend, multi=false, ftype
+    )
+end
+
 function _friends_leaveoneout_radius(points::AbstractMatrix{<:Real}, ftype::Symbol)
     pts = Matrix{Float64}(points)
     npoints = size(pts, 1)
@@ -1034,6 +1126,8 @@ function update!(
     bootstrap::Integer=0,
     mc_integrate::Bool=false,
     use_clustering::Bool=true,
+    map_backend=nothing,
+    backend_time_ref=nothing,
 )
     pts = Matrix{Float64}(points)
     size(pts, 2) == bound.ndim || throw(
@@ -1054,7 +1148,11 @@ function update!(
     radius = if bootstrap == 0
         maximum(_friends_leaveoneout_radius(points_t, ftype))
     else
-        maximum(_friends_bootstrap_radius(points_t, ftype; rng) for _ in 1:Int(bootstrap))
+        value, backend_time = _friends_bootstrap_radius_max(
+            points_t, ftype, Int(bootstrap); rng, map_backend
+        )
+        !isnothing(backend_time_ref) && (backend_time_ref[] += backend_time)
+        value
     end
     radius > 0 || (radius = sqrt(eps(Float64)))
     bound.cov .*= radius^2

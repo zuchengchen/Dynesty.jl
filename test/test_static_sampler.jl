@@ -540,6 +540,84 @@ end
     @test all(isfinite, results(sampler).logz)
 end
 
+@testset "Static sampler bound bootstrap pool usage" begin
+    optout_backend = StaticCountingMapBackend(2)
+    optout = NestedSampler(
+        static_loglike_gaussian,
+        static_prior_identity,
+        2;
+        nlive=24,
+        bound=:single,
+        sample=:rwalk,
+        walks=3,
+        first_update=Dict(:min_ncall => 24, :min_eff => 100.0),
+        bootstrap=3,
+        rng=MersenneTwister(37),
+        map_backend=optout_backend,
+        pool_usage=PoolUsage(initial=false, proposals=false, bounds=false),
+    )
+    run_nested!(optout; maxiter=5, dlogz=nothing, add_live=false)
+    @test optout.nbound >= 1
+    @test optout_backend.calls == 0
+    @test optout.parallel_stats.bound_update_count > 0
+    @test optout.parallel_stats.bound_update_backend_wall_time == 0.0
+
+    optin_backend = StaticCountingMapBackend(2)
+    optin = NestedSampler(
+        static_loglike_gaussian,
+        static_prior_identity,
+        2;
+        nlive=24,
+        bound=:single,
+        sample=:rwalk,
+        walks=3,
+        first_update=Dict(:min_ncall => 24, :min_eff => 100.0),
+        bootstrap=3,
+        rng=MersenneTwister(37),
+        map_backend=optin_backend,
+        pool_usage=PoolUsage(initial=false, proposals=false, bounds=true),
+    )
+    run_nested!(optin; maxiter=5, dlogz=nothing, add_live=false)
+    @test optin.nbound >= 1
+    @test optin_backend.calls > 0
+    @test all(==(3), optin_backend.sizes)
+    @test optin.parallel_stats.bound_update_backend_wall_time > 0.0
+    @test optin.parallel_stats.map_backend_calls >= optin_backend.calls
+
+    function threaded_bound_run(seed)
+        sampler = NestedSampler(
+            static_loglike_gaussian,
+            static_prior_identity,
+            2;
+            nlive=24,
+            bound=:single,
+            sample=:rwalk,
+            walks=3,
+            first_update=Dict(:min_ncall => 24, :min_eff => 100.0),
+            bootstrap=3,
+            rng=MersenneTwister(seed),
+            parallel=:threads,
+            queue_size=2,
+            pool_usage=PoolUsage(initial=false, proposals=false, bounds=true),
+        )
+        run_nested!(sampler; maxiter=5, dlogz=nothing, add_live=false)
+        res = results(sampler)
+        return (
+            logl=copy(res.logl),
+            samples_u=copy(res.samples_u),
+            logz=copy(res.logz),
+            backend_time=sampler.parallel_stats.bound_update_backend_wall_time,
+        )
+    end
+    threaded_first = threaded_bound_run(38)
+    threaded_second = threaded_bound_run(38)
+    @test threaded_first.logl == threaded_second.logl
+    @test threaded_first.samples_u == threaded_second.samples_u
+    @test threaded_first.logz == threaded_second.logz
+    @test threaded_first.backend_time > 0.0
+    @test threaded_second.backend_time > 0.0
+end
+
 @testset "Static sampler periodic and reflective dimensions" begin
     sampler = NestedSampler(
         static_loglike_gaussian,
