@@ -108,6 +108,7 @@ function dynamic_parent_fixture(; rng=MersenneTwister(1234))
         :bound_bootstrap => 0,
         :bound_enlarge => 1.0,
         :map_backend => ThreadedMapBackend(queue_size=2),
+        :pool_usage => PoolUsage(proposals=false, stopping=true),
         :saved_run => dynamic_saved_record(),
         :it => 7,
         :eff => 44.0,
@@ -205,6 +206,37 @@ end
     @test sampler.sampler.proposal_batches_submitted > 0
 end
 
+@testset "Dynamic sampler pool usage propagation" begin
+    backend = DynamicCountingMapBackend(3)
+    sampler = DynamicSampler(
+        dynamic_loglike,
+        dynamic_prior_identity,
+        2;
+        nlive=14,
+        bound=:none,
+        sample=:unif,
+        rng=MersenneTwister(713),
+        map_backend=backend,
+        use_pool=(propose_point=false, stop_function=true),
+    )
+    @test sampler.pool_usage.proposals == false
+    @test sampler.pool_usage.stopping == true
+    run_nested!(sampler; maxiter_init=5, dlogz_init=nothing, print_progress=false)
+    @test sampler.sampler isa NestedSampler
+    @test sampler.sampler.pool_usage == sampler.pool_usage
+    @test sampler.sampler.proposal_tasks_submitted == 0
+    @test backend.calls == 1
+
+    configured = _configure_batch_sampler(
+        dynamic_parent_fixture(; rng=MersenneTwister(714)),
+        4,
+        3;
+        logl_bounds=(-Inf, -0.5),
+    )
+    @test configured.sampler.pool_usage.proposals == false
+    @test configured.sampler.pool_usage.stopping == true
+end
+
 @testset "Dynamic sampler blobs and checkpoint restore" begin
     blob_loglike(v) = (dynamic_loglike(v), (radius=sum(abs, v .- 0.5), first=v[1]))
     sampler = DynamicSampler(
@@ -234,7 +266,9 @@ end
         )
         @test restored isa DynamicSampler
         @test restored.internal_state == DynamicSamplerRunDone
+        @test restored.pool_usage == sampler.pool_usage
         @test restored.sampler isa NestedSampler
+        @test restored.sampler.pool_usage == sampler.sampler.pool_usage
         restored_res = results(restored)
         @test Dynesty.isdynamic(restored_res)
         @test restored_res.logl == res.logl

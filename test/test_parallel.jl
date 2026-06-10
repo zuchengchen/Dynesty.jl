@@ -53,6 +53,46 @@ dist_parallel_loglike(v) = -sum(abs2, v .- 0.5)
     @test rng_values1 == rng_values2
 end
 
+@testset "Pool usage policy parsing" begin
+    default_usage = PoolUsage()
+    @test default_usage.initial
+    @test default_usage.prior_transform
+    @test default_usage.loglikelihood
+    @test default_usage.proposals
+    @test !default_usage.bounds
+    @test !default_usage.stopping
+    @test Dynesty._pool_usage_initial(default_usage)
+
+    usage = Dynesty._get_pool_usage((initial=false, proposals=false), nothing)
+    @test usage isa PoolUsage
+    @test !usage.initial
+    @test !usage.proposals
+    @test usage.prior_transform
+
+    use_pool = Dict(
+        "prior_transform" => false,
+        :logl => true,
+        "propose_point" => false,
+        :update_bound => true,
+        "stop_function" => true,
+    )
+    compat = Dynesty._get_pool_usage(nothing, use_pool)
+    @test compat.prior_transform == false
+    @test compat.loglikelihood == true
+    @test compat.proposals == false
+    @test compat.bounds == true
+    @test compat.stopping == true
+    @test !Dynesty._pool_usage_initial(compat)
+
+    roundtrip = Dynesty._pool_usage_from_config(Dynesty._pool_usage_config(compat))
+    @test roundtrip == compat
+
+    @test_throws ArgumentError Dynesty._get_pool_usage(PoolUsage(), Dict(:proposals => true))
+    @test_throws ArgumentError Dynesty._get_pool_usage((unknown=true,), nothing)
+    @test_throws ArgumentError Dynesty._get_pool_usage((proposals=1,), nothing)
+    @test_throws ArgumentError Dynesty._get_pool_usage(["proposals"], nothing)
+end
+
 @testset "Map errors include context" begin
     err = try
         map_ordered(SerialMapBackend(), x -> x == 2 ? error("boom") : x, [1, 2, 3])

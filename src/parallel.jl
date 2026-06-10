@@ -4,6 +4,121 @@ using Random
 abstract type AbstractMapBackend end
 
 const PARALLEL_OPTIONS = (:serial, :none, :threads, :threaded, :distributed)
+const POOL_USAGE_KEYS = (
+    :initial,
+    :prior_transform,
+    :loglikelihood,
+    :proposals,
+    :bounds,
+    :stopping,
+)
+
+"""
+    PoolUsage(; initial=true, prior_transform=true, loglikelihood=true,
+              proposals=true, bounds=false, stopping=false)
+
+Julia-native policy describing which sampler paths may use the configured map
+backend. `use_pool` dictionaries from Python-adjacent workflows are parsed into
+this type; the backend object itself remains Julia-native.
+"""
+Base.@kwdef struct PoolUsage
+    initial::Bool = true
+    prior_transform::Bool = true
+    loglikelihood::Bool = true
+    proposals::Bool = true
+    bounds::Bool = false
+    stopping::Bool = false
+end
+
+function _pool_usage_key(raw_key)
+    if raw_key isa Symbol
+        key = raw_key
+    elseif raw_key isa AbstractString
+        key = Symbol(strip(String(raw_key)))
+    else
+        throw(
+            ArgumentError(
+                "pool usage keys must be symbols or strings; got $(repr(raw_key))",
+            ),
+        )
+    end
+    key === :logl && return :loglikelihood
+    key === :loglike && return :loglikelihood
+    key === :likelihood && return :loglikelihood
+    key === :proposal && return :proposals
+    key === :propose && return :proposals
+    key === :propose_point && return :proposals
+    key === :evolve && return :proposals
+    key === :update_bound && return :bounds
+    key === :bound && return :bounds
+    key === :stop_function && return :stopping
+    key === :stopfn && return :stopping
+    key === :stop && return :stopping
+    key in POOL_USAGE_KEYS || throw(
+        ArgumentError(
+            "unrecognized pool usage key $(repr(raw_key)); expected one of $(collect(POOL_USAGE_KEYS)) or a documented use_pool alias",
+        ),
+    )
+    return key
+end
+
+function _pool_usage_bool(raw_value, key::Symbol)
+    raw_value isa Bool ||
+        throw(ArgumentError("pool usage key $(repr(key)) must be Bool; got $(repr(raw_value))"))
+    return raw_value
+end
+
+function _pool_usage_pairs(value)
+    if value isa AbstractDict
+        return pairs(value)
+    elseif value isa NamedTuple
+        return ((key, getfield(value, key)) for key in keys(value))
+    else
+        throw(
+            ArgumentError(
+                "pool_usage/use_pool must be PoolUsage, Dict, or NamedTuple; got $(typeof(value))",
+            ),
+        )
+    end
+end
+
+function _pool_usage_from_pairs(value)
+    cfg = _pool_usage_config(PoolUsage())
+    for (raw_key, raw_value) in _pool_usage_pairs(value)
+        key = _pool_usage_key(raw_key)
+        cfg[key] = _pool_usage_bool(raw_value, key)
+    end
+    return PoolUsage(;
+        initial=cfg[:initial],
+        prior_transform=cfg[:prior_transform],
+        loglikelihood=cfg[:loglikelihood],
+        proposals=cfg[:proposals],
+        bounds=cfg[:bounds],
+        stopping=cfg[:stopping],
+    )
+end
+
+_pool_usage(value::PoolUsage) = value
+_pool_usage(value) = isnothing(value) ? PoolUsage() : _pool_usage_from_pairs(value)
+
+function _get_pool_usage(pool_usage=nothing, use_pool=nothing)
+    if !isnothing(pool_usage) && !isnothing(use_pool)
+        throw(ArgumentError("specify either pool_usage or use_pool, not both"))
+    end
+    return _pool_usage(isnothing(pool_usage) ? use_pool : pool_usage)
+end
+
+function _pool_usage_config(usage::PoolUsage)
+    return Dict{Symbol, Any}(key => getfield(usage, key) for key in POOL_USAGE_KEYS)
+end
+
+function _pool_usage_from_config(config)
+    isnothing(config) && return PoolUsage()
+    return _pool_usage(config)
+end
+
+_pool_usage_initial(usage::PoolUsage) =
+    usage.initial && usage.prior_transform && usage.loglikelihood
 
 struct SerialMapBackend <: AbstractMapBackend
     queue_size::Int

@@ -6,6 +6,24 @@ using Test
 static_prior_identity(u) = copy(u)
 static_loglike_gaussian(v) = -0.5 * sum(((v .- 0.5) ./ 0.12) .^ 2)
 
+mutable struct StaticCountingMapBackend <: Dynesty.AbstractMapBackend
+    queue_size::Int
+    calls::Int
+    sizes::Vector{Int}
+end
+
+StaticCountingMapBackend(queue_size::Integer) =
+    StaticCountingMapBackend(Int(queue_size), 0, Int[])
+
+Dynesty.backend_kind(::StaticCountingMapBackend) = :static_counting
+
+function Dynesty.map_ordered(backend::StaticCountingMapBackend, f, inputs)
+    items = collect(inputs)
+    backend.calls += 1
+    push!(backend.sizes, length(items))
+    return Dynesty.map_ordered(SerialMapBackend(), f, items)
+end
+
 @testset "Static sampler factories and live points" begin
     @test Dynesty._get_bound(:none, 2) isa UnitCube
     @test Dynesty._get_bound("single", 2) isa Ellipsoid
@@ -192,6 +210,55 @@ end
     )
 end
 
+@testset "Static sampler pool usage policy" begin
+    initial_backend = StaticCountingMapBackend(2)
+    sampler = NestedSampler(
+        static_loglike_gaussian,
+        static_prior_identity,
+        2;
+        nlive=10,
+        bound=:none,
+        sample=:unif,
+        rng=MersenneTwister(57),
+        map_backend=initial_backend,
+        pool_usage=PoolUsage(initial=false),
+    )
+    @test sampler.pool_usage.initial == false
+    @test initial_backend.calls == 0
+    run_nested!(sampler; maxiter=3, dlogz=nothing, add_live=false)
+    @test sampler.proposal_tasks_submitted > 0
+
+    proposal_backend = StaticCountingMapBackend(3)
+    no_proposal_sampler = NestedSampler(
+        static_loglike_gaussian,
+        static_prior_identity,
+        2;
+        nlive=12,
+        bound=:none,
+        sample=:unif,
+        rng=MersenneTwister(58),
+        map_backend=proposal_backend,
+        use_pool=Dict("propose_point" => false),
+    )
+    @test proposal_backend.calls == 1
+    run_nested!(no_proposal_sampler; maxiter=4, dlogz=nothing, add_live=false)
+    @test no_proposal_sampler.pool_usage.proposals == false
+    @test no_proposal_sampler.proposal_tasks_submitted == 0
+    @test proposal_backend.calls == 1
+
+    @test_throws ArgumentError NestedSampler(
+        static_loglike_gaussian,
+        static_prior_identity,
+        2;
+        nlive=6,
+        bound=:none,
+        sample=:unif,
+        rng=MersenneTwister(59),
+        pool_usage=PoolUsage(),
+        use_pool=Dict(:proposals => true),
+    )
+end
+
 @testset "Static sampler parallel live-point errors" begin
     err = try
         NestedSampler(
@@ -332,6 +399,7 @@ end
         @test restored isa NestedSampler
         @test restored.map_backend isa ThreadedMapBackend
         @test restored.map_backend.queue_size == 2
+        @test restored.pool_usage == sampler.pool_usage
         @test restored.proposal_tasks_submitted == sampler.proposal_tasks_submitted
         @test restored.proposal_batches_submitted == sampler.proposal_batches_submitted
         run_nested!(restored; maxiter=3, dlogz=nothing, add_live=true)

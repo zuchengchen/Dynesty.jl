@@ -56,6 +56,7 @@ mutable struct DynamicSampler{L, P}
     first_bound_update::Dict{Symbol, Any}
     rng::AbstractRNG
     map_backend::AbstractMapBackend
+    pool_usage::PoolUsage
     periodic::Any
     reflective::Any
     walks::Any
@@ -108,6 +109,8 @@ function DynamicSampler(
     parallel=:serial,
     map_backend=nothing,
     queue_size=nothing,
+    pool_usage=nothing,
+    use_pool=nothing,
     enlarge=nothing,
     bootstrap=nothing,
     bound_enlarge=nothing,
@@ -142,6 +145,7 @@ function DynamicSampler(
     end
     rng_obj isa AbstractRNG || throw(ArgumentError("rng/rstate must be an AbstractRNG"))
     backend = _get_map_backend(parallel, map_backend, queue_size)
+    usage = _get_pool_usage(pool_usage, use_pool)
 
     sampling_v = isnothing(sampling) ? sample : sampling
     bounding_v = isnothing(bounding) ? bound : bounding
@@ -192,6 +196,7 @@ function DynamicSampler(
         first_update_d,
         rng_obj,
         backend,
+        usage,
         periodic,
         reflective,
         walks,
@@ -486,6 +491,9 @@ function _configure_batch_sampler(
     end
     map_backend isa AbstractMapBackend ||
         throw(ArgumentError("main sampler map_backend must be an AbstractMapBackend"))
+    pool_usage = _pool_usage_from_config(
+        _dynamic_get(main_sampler, (:pool_usage, :pool_usage_config); default=nothing)
+    )
     sampling = _dynamic_get(main_sampler, (:sampling, :sample, :sample_kind); default=:auto)
     bounding = _dynamic_get(main_sampler, (:bounding, :bound, :bound_kind); default=:multi)
     periodic = _dynamic_get(main_sampler, (:periodic,); default=nothing)
@@ -526,6 +534,7 @@ function _configure_batch_sampler(
             ndim,
             rng,
             map_backend=map_backend,
+            pool_usage,
             blob,
             copy_inputs,
         )
@@ -569,6 +578,7 @@ function _configure_batch_sampler(
             blob,
             copy_inputs,
             map_backend,
+            pool_usage,
             bound_enlarge,
             bound_bootstrap,
             save_bounds,
@@ -609,6 +619,7 @@ function _configure_batch_sampler(
             blob,
             copy_inputs,
             map_backend,
+            pool_usage,
             bound_enlarge,
             bound_bootstrap,
             save_bounds,
@@ -670,6 +681,7 @@ function _configure_batch_sampler(
             blob,
             copy_inputs,
             map_backend,
+            pool_usage,
             bound_enlarge,
             bound_bootstrap,
             save_bounds,
@@ -713,6 +725,7 @@ function _dynamic_nested_sampler_for_batch(
     blob,
     copy_inputs,
     map_backend,
+    pool_usage,
     bound_enlarge,
     bound_bootstrap,
     save_bounds,
@@ -740,6 +753,7 @@ function _dynamic_nested_sampler_for_batch(
         blob,
         copy_inputs,
         map_backend,
+        pool_usage,
     )
     sampler.save_bounds = save_bounds
     sampler.logl_first_update = logl_first_update
@@ -1276,6 +1290,7 @@ function run_nested!(
             first_update=first_update_d,
             rng=sampler.rng,
             map_backend=sampler.map_backend,
+            pool_usage=sampler.pool_usage,
             live_points,
             enlarge=sampler.bound_enlarge,
             bootstrap=sampler.bound_bootstrap,
@@ -1447,6 +1462,7 @@ function sampler_snapshot(sampler::DynamicSampler)
         :first_bound_update => sampler.first_bound_update,
         :rng => sampler.rng,
         :map_backend_config => _backend_config(sampler.map_backend),
+        :pool_usage_config => _pool_usage_config(sampler.pool_usage),
         :periodic => sampler.periodic,
         :reflective => sampler.reflective,
         :walks => sampler.walks,
@@ -1494,6 +1510,7 @@ function _restore_dynamic_sampler(state::AbstractDict, loglikelihood, prior_tran
         first_update=state[:first_bound_update],
         rng=state[:rng],
         map_backend=_map_backend_from_config(get(state, :map_backend_config, nothing)),
+        pool_usage=_pool_usage_from_config(get(state, :pool_usage_config, nothing)),
         enlarge=state[:bound_enlarge],
         bootstrap=state[:bound_bootstrap],
         walks=state[:walks],

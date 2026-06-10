@@ -12,9 +12,8 @@ row-major convention (`nsamples x ndim`), while Julia callables receive
 one-dimensional `Vector{Float64}` inputs.
 
 Sampler-level parallel configuration is available with `parallel`,
-`map_backend`, and `queue_size`. The backend is used for initial live-point
-prior-transform and likelihood evaluation and, when `queue_size > 1`, for the
-main proposal/evolve queue in `run_nested!`.
+`map_backend`, `queue_size`, and `pool_usage`. The backend is used according to
+the [`PoolUsage`](@ref) policy.
 """
 mutable struct NestedSampler{L, P}
     loglikelihood::L
@@ -26,6 +25,7 @@ mutable struct NestedSampler{L, P}
     copy_inputs::Bool
     rng::AbstractRNG
     map_backend::AbstractMapBackend
+    pool_usage::PoolUsage
     bound_kind::Symbol
     sample_kind::Symbol
     bound::AbstractBound
@@ -293,6 +293,7 @@ function _initialize_live_points(
     ndim::Integer,
     rng::AbstractRNG=Random.default_rng(),
     map_backend::AbstractMapBackend=SerialMapBackend(),
+    pool_usage::PoolUsage=PoolUsage(),
     blob::Bool=false,
     copy_inputs::Bool=false,
 )
@@ -317,7 +318,7 @@ function _initialize_live_points(
             cur_v = zeros(Float64, nlive_i, ndim_i)
             cur_logl = zeros(Float64, nlive_i)
             cur_blobs = blob ? Vector{Any}(undef, nlive_i) : nothing
-            if map_backend isa SerialMapBackend
+            if map_backend isa SerialMapBackend || !_pool_usage_initial(pool_usage)
                 for i in 1:nlive_i
                     u = vec(cur_u[i, :])
                     v, logl, out_blob = _evaluate_live_point(
@@ -452,6 +453,8 @@ function NestedSampler(
     parallel=:serial,
     map_backend=nothing,
     queue_size=nothing,
+    pool_usage=nothing,
+    use_pool=nothing,
     live_points=nothing,
     enlarge=nothing,
     bootstrap=nothing,
@@ -485,6 +488,7 @@ function NestedSampler(
     end
     rng_obj isa AbstractRNG || throw(ArgumentError("rng/rstate must be an AbstractRNG"))
     backend = _get_map_backend(parallel, map_backend, queue_size)
+    usage = _get_pool_usage(pool_usage, use_pool)
     first_update_d =
         isnothing(first_update) ? Dict{Symbol, Any}() : _check_first_update(first_update)
 
@@ -514,6 +518,7 @@ function NestedSampler(
         ndim=ndim_i,
         rng=rng_obj,
         map_backend=backend,
+        pool_usage=usage,
         blob,
         copy_inputs,
     )
@@ -530,6 +535,7 @@ function NestedSampler(
         copy_inputs,
         rng_obj,
         backend,
+        usage,
         bound_kind,
         sample_kind,
         bound_current,
@@ -792,7 +798,9 @@ function _proposal_queue_size(sampler::NestedSampler)
 end
 
 _proposal_queue_enabled(sampler::NestedSampler) =
-    !(sampler.map_backend isa SerialMapBackend) && _proposal_queue_size(sampler) > 1
+    sampler.pool_usage.proposals &&
+    !(sampler.map_backend isa SerialMapBackend) &&
+    _proposal_queue_size(sampler) > 1
 
 function _clear_proposal_queue!(sampler::NestedSampler)
     empty!(sampler.proposal_queue)
@@ -1252,6 +1260,7 @@ function sampler_snapshot(sampler::NestedSampler)
         :copy_inputs => sampler.copy_inputs,
         :rng => sampler.rng,
         :map_backend_config => _backend_config(sampler.map_backend),
+        :pool_usage_config => _pool_usage_config(sampler.pool_usage),
         :bound_kind => sampler.bound_kind,
         :sample_kind => sampler.sample_kind,
         :bound => sampler.bound,
@@ -1304,6 +1313,7 @@ function _restore_nested_sampler(state::AbstractDict, loglikelihood, prior_trans
         Bool(state[:copy_inputs]),
         state[:rng],
         _map_backend_from_config(get(state, :map_backend_config, nothing)),
+        _pool_usage_from_config(get(state, :pool_usage_config, nothing)),
         Symbol(state[:bound_kind]),
         Symbol(state[:sample_kind]),
         state[:bound],
