@@ -26,6 +26,7 @@ mutable struct NestedSampler{L, P}
     rng::AbstractRNG
     map_backend::AbstractMapBackend
     pool_usage::PoolUsage
+    parallel_stats::ParallelStats
     bound_kind::Symbol
     sample_kind::Symbol
     bound::AbstractBound
@@ -303,6 +304,7 @@ function _initialize_live_points(
     ndim_i > 0 || throw(ArgumentError("ndim must be positive; got $ndim"))
     logvol_init = 0.0
     ncalls = 0
+    stats = ParallelStats()
 
     if isnothing(live_points)
         live_u = zeros(Float64, nlive_i, ndim_i)
@@ -314,10 +316,12 @@ function _initialize_live_points(
         min_npoints = min(nlive_i, max(ndim_i + 1, min(nlive_i - 20, 100)))
         min_npoints = max(1, min_npoints)
         for iattempt in 1:n_attempts
+            attempt_start = time()
             cur_u = rand(rng, nlive_i, ndim_i)
             cur_v = zeros(Float64, nlive_i, ndim_i)
             cur_logl = zeros(Float64, nlive_i)
             cur_blobs = blob ? Vector{Any}(undef, nlive_i) : nothing
+            backend_time = 0.0
             if map_backend isa SerialMapBackend || !_pool_usage_initial(pool_usage)
                 for i in 1:nlive_i
                     u = vec(cur_u[i, :])
@@ -330,6 +334,7 @@ function _initialize_live_points(
                 end
             else
                 inputs = [(i, vec(cur_u[i, :])) for i in 1:nlive_i]
+                backend_start = time()
                 mapped = map_ordered(
                     map_backend,
                     input -> begin
@@ -346,6 +351,7 @@ function _initialize_live_points(
                     end,
                     inputs,
                 )
+                backend_time = time() - backend_start
                 for item in mapped
                     i, v, logl, out_blob = item
                     cur_v[i, :] .= v
@@ -354,6 +360,9 @@ function _initialize_live_points(
                 end
             end
             ncalls += nlive_i
+            _record_initial_evaluation!(
+                stats, nlive_i, time() - attempt_start, backend_time
+            )
             finite = isfinite.(cur_logl)
             neg_infinite = isinf.(cur_logl) .& (cur_logl .< 0)
             any((.!finite) .& (.!neg_infinite)) &&
@@ -403,7 +412,7 @@ function _initialize_live_points(
                 )
             end
         end
-        return (live_u, live_v, live_logl, live_blobs), logvol_init, ncalls
+        return (live_u, live_v, live_logl, live_blobs), logvol_init, ncalls, stats
     else
         length(live_points) in (3, 4) ||
             throw(ArgumentError("live_points must contain (u, v, logl[, blobs])"))
@@ -433,7 +442,7 @@ function _initialize_live_points(
             ArgumentError("not a single provided live point has a valid log-likelihood")
         )
         live_blobs = blob ? Vector{Any}(live_points[4]) : nothing
-        return (live_u, live_v, live_logl, live_blobs), logvol_init, ncalls
+        return (live_u, live_v, live_logl, live_blobs), logvol_init, ncalls, stats
     end
 end
 
@@ -510,7 +519,7 @@ function NestedSampler(
     end
     ratio = _get_update_interval_ratio(update_interval, initial_sampler, nlive_i)
     bound_update_interval = max(1, round(Int, ratio * nlive_i))
-    live, logvol_init, init_ncalls = _initialize_live_points(
+    live, logvol_init, init_ncalls, init_stats = _initialize_live_points(
         live_points,
         prior_transform,
         loglikelihood;
@@ -536,6 +545,7 @@ function NestedSampler(
         rng_obj,
         backend,
         usage,
+        init_stats,
         bound_kind,
         sample_kind,
         bound_current,
@@ -602,10 +612,12 @@ function _update_bound!(sampler::NestedSampler; subset=nothing)
     isempty(rows) &&
         throw(ArgumentError("cannot update bound with an empty live-point subset"))
     points = sampler.live_u[rows, 1:sampler.ncdim]
+    update_start = time()
     update!(sampler.bound, points; rng=sampler.rng, bootstrap=sampler.bound_bootstrap)
     if sampler.bound_enlarge != 1.0
         scale_to_logvol!(sampler.bound, sampler.bound.logvol + log(sampler.bound_enlarge))
     end
+    _record_bound_update!(sampler.parallel_stats, time() - update_start)
     return sampler.bound
 end
 
@@ -849,10 +861,12 @@ end
 
 function _fill_proposal_queue!(sampler::NestedSampler, loglstar::Real)
     isempty(sampler.proposal_queue) || return sampler
+    proposal_start = time()
     _update_bound_if_needed!(sampler, loglstar; ncall=sampler.ncall)
     ntasks = _proposal_queue_size(sampler)
     inputs = _proposal_task_inputs(sampler, loglstar, ntasks)
     seed = _proposal_batch_seed!(sampler.rng)
+    backend_start = time()
     mapped = map_with_rng(
         sampler.map_backend,
         (input, rng) -> _proposal_sample(
@@ -866,6 +880,7 @@ function _fill_proposal_queue!(sampler::NestedSampler, loglstar::Real)
         inputs;
         seed,
     )
+    backend_time = time() - backend_start
     empty!(sampler.proposal_queue)
     for ret in mapped
         ret isa SamplerReturn ||
@@ -875,6 +890,9 @@ function _fill_proposal_queue!(sampler::NestedSampler, loglstar::Real)
     sampler.proposal_queue_loglstar = Float64(loglstar)
     sampler.proposal_tasks_submitted += length(inputs)
     sampler.proposal_batches_submitted += 1
+    _record_proposal_batch!(
+        sampler.parallel_stats, length(inputs), time() - proposal_start, backend_time
+    )
     return sampler
 end
 
@@ -1231,6 +1249,7 @@ function results(sampler::NestedSampler)
         :h => Float64.(record[:h]),
         :information => Float64.(record[:h]),
         :proposal_stats => copy(record[:proposal_stats]),
+        :parallel_stats => deepcopy(sampler.parallel_stats),
     ]
     if sampler.blob
         push!(data, :blobs => copy(record[:blobs]))
@@ -1261,6 +1280,7 @@ function sampler_snapshot(sampler::NestedSampler)
         :rng => sampler.rng,
         :map_backend_config => _backend_config(sampler.map_backend),
         :pool_usage_config => _pool_usage_config(sampler.pool_usage),
+        :parallel_stats => _parallel_stats_config(sampler.parallel_stats),
         :bound_kind => sampler.bound_kind,
         :sample_kind => sampler.sample_kind,
         :bound => sampler.bound,
@@ -1314,6 +1334,7 @@ function _restore_nested_sampler(state::AbstractDict, loglikelihood, prior_trans
         state[:rng],
         _map_backend_from_config(get(state, :map_backend_config, nothing)),
         _pool_usage_from_config(get(state, :pool_usage_config, nothing)),
+        _parallel_stats_from_config(get(state, :parallel_stats, nothing)),
         Symbol(state[:bound_kind]),
         Symbol(state[:sample_kind]),
         state[:bound],

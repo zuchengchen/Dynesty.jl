@@ -42,7 +42,7 @@ end
     )
     @test Dynesty._get_enlarge_bootstrap(UnitCubeSampler(; ndim=2), nothing, 4) == (1.0, 4)
 
-    live, logvol_init, ncalls = Dynesty._initialize_live_points(
+    live, logvol_init, ncalls, init_stats = Dynesty._initialize_live_points(
         nothing,
         u -> (2u[1] - 1, 2u[2] - 1),
         v -> -sum(abs2, v);
@@ -57,6 +57,8 @@ end
     @test live_blobs === nothing
     @test logvol_init == 0.0
     @test ncalls == 12
+    @test init_stats.initial_evaluation_count == 1
+    @test init_stats.initial_evaluation_tasks == 12
     @test all(0 .< live_u .< 1)
     @test all(isfinite, live_logl)
 
@@ -80,6 +82,8 @@ end
     @test size(sampler.live_u) == (40, 2)
     @test size(sampler.live_v) == (40, 2)
     @test sampler.ncall == 40
+    @test sampler.parallel_stats.initial_evaluation_count == 1
+    @test sampler.parallel_stats.initial_evaluation_tasks == 40
 
     run_nested!(sampler; maxiter=35, dlogz=nothing, add_live=true, print_progress=false)
     res = results(sampler)
@@ -91,6 +95,8 @@ end
     @test all(diff(res.logvol) .< 0)
     @test res.logzerr[end] >= 0
     @test sampler.added_live
+    @test res.parallel_stats isa ParallelStats
+    @test res.parallel_stats.initial_evaluation_tasks == 40
     @test n_effective(sampler) > 1
     @test importance_weights(res) ≈
         exp.(res.logwt .- res.logz[end]) ./ sum(exp.(res.logwt .- res.logz[end]))
@@ -227,6 +233,8 @@ end
     @test initial_backend.calls == 0
     run_nested!(sampler; maxiter=3, dlogz=nothing, add_live=false)
     @test sampler.proposal_tasks_submitted > 0
+    @test sampler.parallel_stats.proposal_tasks_submitted == sampler.proposal_tasks_submitted
+    @test sampler.parallel_stats.proposal_batches_submitted == sampler.proposal_batches_submitted
 
     proposal_backend = StaticCountingMapBackend(3)
     no_proposal_sampler = NestedSampler(
@@ -400,6 +408,8 @@ end
         @test restored.map_backend isa ThreadedMapBackend
         @test restored.map_backend.queue_size == 2
         @test restored.pool_usage == sampler.pool_usage
+        @test restored.parallel_stats.proposal_tasks_submitted ==
+            sampler.parallel_stats.proposal_tasks_submitted
         @test restored.proposal_tasks_submitted == sampler.proposal_tasks_submitted
         @test restored.proposal_batches_submitted == sampler.proposal_batches_submitted
         run_nested!(restored; maxiter=3, dlogz=nothing, add_live=true)
@@ -484,6 +494,8 @@ end
     run_nested!(sampler; maxiter=12, dlogz=nothing, add_live=false)
     @test !sampler.unit_cube_sampling
     @test sampler.bound isa Ellipsoid
+    @test sampler.parallel_stats.bound_update_count > 0
+    @test sampler.parallel_stats.bound_update_wall_time >= 0.0
     res = results(sampler)
     @test length(res.logl) == 12
     @test haskey(res, :blobs)

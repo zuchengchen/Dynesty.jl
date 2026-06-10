@@ -85,6 +85,32 @@ than worker process objects; restored distributed backends only use worker IDs
 that are live in the current Julia session and otherwise fall back to serial
 ordered-map execution.
 
+## Instrumentation
+
+Samplers maintain lightweight [`ParallelStats`](@ref) counters in
+`sampler.parallel_stats`, and `results(sampler)` includes the same information
+as `res.parallel_stats`. Times are wall-clock seconds measured in the Julia
+process. They are intended for within-run diagnostics, not precise
+cross-machine benchmarks.
+
+Key fields include:
+
+- `initial_evaluation_count`, `initial_evaluation_tasks`, and
+  `initial_evaluation_wall_time` for initial live-point setup.
+- `proposal_tasks_submitted`, `proposal_batches_submitted`,
+  `proposal_wall_time`, and `proposal_backend_wall_time` for proposal/evolve
+  queue work.
+- `bound_update_count` and `bound_update_wall_time` for bound refreshes.
+- `stop_function_count` and `stop_function_wall_time` for dynamic stopping
+  checks.
+- `map_backend_calls` and `map_backend_wall_time` for backend calls visible to
+  the sampler instrumentation.
+
+Backend wall-time fields include the time spent inside the backend map call as
+observed by the caller; threaded and distributed backends are not directly
+comparable without considering worker count, serialization, and user-function
+cost.
+
 Distributed proposal/evolve queue coverage is available as an extended test:
 set `DYNESTY_RUN_DISTRIBUTED_TESTS=true` before running the test suite.
 
@@ -93,6 +119,7 @@ map_ordered
 map_with_rng
 task_seeds
 PoolUsage
+ParallelStats
 ```
 
 Public backend and error types:

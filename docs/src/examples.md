@@ -46,8 +46,9 @@ python examples/pe_parallel_corner.py --nsamples-plot 15000 \
 ```
 
 `examples/pe_parallel_julia.jl` records `proposal_evolve_parallel`,
-`proposal_tasks_submitted`, and `proposal_batches_submitted` in its metadata
-and errors if a queued threaded run never submits proposal/evolve work through
-the backend. Use `--likelihood-cost cheap|medium|heavy`, `--work-size`, or
-`--sleep-ms` to separate scheduling overhead from likelihood cost. Outputs go
-to `examples/output/`, which should remain uncommitted.
+`proposal_tasks_submitted`, `proposal_batches_submitted`, and `parallel_stats`
+in its metadata and errors if a queued threaded run never submits
+proposal/evolve work through the backend. Use
+`--likelihood-cost cheap|medium|heavy`, `--work-size`, or `--sleep-ms` to
+separate scheduling overhead from likelihood cost. Outputs go to
+`examples/output/`, which should remain uncommitted.

@@ -163,6 +163,8 @@ end
     @test all(isfinite, res.logz)
     @test all(diff(res.logvol) .< 0)
     @test all(isfinite, importance_weights(res))
+    @test res.parallel_stats isa ParallelStats
+    @test res.parallel_stats.initial_evaluation_tasks == 24
     @test n_effective(sampler) > 1
 
     run_nested!(sampler; maxiter_init=5, print_progress=false)
@@ -226,6 +228,7 @@ end
     @test sampler.sampler.pool_usage == sampler.pool_usage
     @test sampler.sampler.proposal_tasks_submitted == 0
     @test backend.calls == 1
+    @test results(sampler).parallel_stats.proposal_tasks_submitted == 0
 
     configured = _configure_batch_sampler(
         dynamic_parent_fixture(; rng=MersenneTwister(714)),
@@ -267,6 +270,8 @@ end
         @test restored isa DynamicSampler
         @test restored.internal_state == DynamicSamplerRunDone
         @test restored.pool_usage == sampler.pool_usage
+        @test restored.parallel_stats.initial_evaluation_tasks ==
+            sampler.parallel_stats.initial_evaluation_tasks
         @test restored.sampler isa NestedSampler
         @test restored.sampler.pool_usage == sampler.sampler.pool_usage
         restored_res = results(restored)
@@ -350,6 +355,37 @@ end
     @test manual.batch == 1
     @test results(manual).batch_nlive == [12, 5]
     @test sort(unique(results(manual).samples_batch)) == [0, 1]
+    @test results(manual).parallel_stats.bound_update_count >= 0
+end
+
+@testset "Dynamic sampler stop-function stats" begin
+    stop_calls = Ref(0)
+    stop_fn = function (res, args; rng)
+        stop_calls[] += 1
+        return true
+    end
+    sampler = DynamicSampler(
+        dynamic_loglike,
+        dynamic_prior_identity,
+        2;
+        nlive=10,
+        bound=:none,
+        sample=:unif,
+        rng=MersenneTwister(729),
+        pool_usage=PoolUsage(stopping=true),
+    )
+    run_nested!(
+        sampler;
+        maxiter_init=5,
+        dlogz_init=nothing,
+        nlive_batch=4,
+        maxbatch=2,
+        stop_function=stop_fn,
+        print_progress=false,
+    )
+    @test stop_calls[] == 1
+    @test sampler.parallel_stats.stop_function_count == 1
+    @test results(sampler).parallel_stats.stop_function_count == 1
 end
 
 @testset "Dynamic sampler weighting fixtures" begin

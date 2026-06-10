@@ -57,6 +57,7 @@ mutable struct DynamicSampler{L, P}
     rng::AbstractRNG
     map_backend::AbstractMapBackend
     pool_usage::PoolUsage
+    parallel_stats::ParallelStats
     periodic::Any
     reflective::Any
     walks::Any
@@ -197,6 +198,7 @@ function DynamicSampler(
         rng_obj,
         backend,
         usage,
+        ParallelStats(),
         periodic,
         reflective,
         walks,
@@ -526,7 +528,7 @@ function _configure_batch_sampler(
     selected_indices = Int[]
 
     batch_sampler = if fresh_prior
-        live, logvol0, init_ncalls = _initialize_live_points(
+        live, logvol0, init_ncalls, init_stats = _initialize_live_points(
             nothing,
             prior_transform,
             loglikelihood;
@@ -584,6 +586,7 @@ function _configure_batch_sampler(
             save_bounds,
             logl_first_update,
         )
+        sampler.parallel_stats = init_stats
         sampler.logvol_init = logvol0
         _update_bound_if_needed!(sampler, logl_min; force=true)
         sampler
@@ -1193,6 +1196,7 @@ function add_batch!(
     sampler.new_run = _dynamic_new_run_from_batch(
         configured, sampler.batch + 1, id_offset, it_offset
     )
+    _merge_parallel_stats!(sampler.parallel_stats, configured.sampler.parallel_stats)
     combine_runs!(sampler)
     sampler.internal_state = DynamicSamplerBatchDone
     sampler.batch_sampler = nothing
@@ -1326,6 +1330,7 @@ function run_nested!(
             print_progress,
             print_func,
         )
+        sampler.parallel_stats = deepcopy(static_sampler.parallel_stats)
         add_live && (sampler.internal_state = DynamicSamplerInBaseAddLive)
 
         static_results = results(static_sampler)
@@ -1380,7 +1385,9 @@ function run_nested!(
         batch_call = min(remaining_call, maxcall_batch_i)
         (batch_iter > 0 && batch_call > 0) || break
         if use_stop
+            stop_start = time()
             should_stop = stop(results(sampler), stop_args; rng=sampler.rng)
+            _record_stop_function!(sampler.parallel_stats, time() - stop_start)
             should_stop && break
         end
         add_batch!(
@@ -1431,6 +1438,7 @@ function results(sampler::DynamicSampler)
         :batch_nlive => Int.(record[:batch_nlive]),
         :batch_logl_bounds => _dynamic_batch_bounds_matrix(record[:batch_logl_bounds]),
         :proposal_stats => copy(record[:proposal_stats]),
+        :parallel_stats => deepcopy(sampler.parallel_stats),
     ]
     sampler.blob && push!(data, :blobs => copy(record[:blobs]))
     if !isnothing(sampler.sampler) && sampler.sampler.save_bounds
@@ -1463,6 +1471,7 @@ function sampler_snapshot(sampler::DynamicSampler)
         :rng => sampler.rng,
         :map_backend_config => _backend_config(sampler.map_backend),
         :pool_usage_config => _pool_usage_config(sampler.pool_usage),
+        :parallel_stats => _parallel_stats_config(sampler.parallel_stats),
         :periodic => sampler.periodic,
         :reflective => sampler.reflective,
         :walks => sampler.walks,
@@ -1520,6 +1529,7 @@ function _restore_dynamic_sampler(state::AbstractDict, loglikelihood, prior_tran
         blob=Bool(state[:blob]),
         copy_inputs=Bool(state[:copy_inputs]),
     )
+    sampler.parallel_stats = _parallel_stats_from_config(get(state, :parallel_stats, nothing))
     sampler.sampler = if isnothing(state[:sampler])
         nothing
     else

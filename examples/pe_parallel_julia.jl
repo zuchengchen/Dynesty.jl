@@ -124,6 +124,8 @@ function weighted_mean_cov(samples, weights)
     return mean, cov
 end
 
+parallel_stats_dict(stats) = Dynesty._parallel_stats_config(stats)
+
 function parse_cli(args)
     opts = Dict{Symbol, Any}(
         :output_dir => joinpath(@__DIR__, "output", "pe_parallel_compare"),
@@ -238,6 +240,7 @@ function main(args=ARGS)
             :proposal_evolve_parallel => fit.sampler.proposal_tasks_submitted > 0,
             :proposal_tasks_submitted => fit.sampler.proposal_tasks_submitted,
             :proposal_batches_submitted => fit.sampler.proposal_batches_submitted,
+            :parallel_stats => parallel_stats_dict(fit.sampler.parallel_stats),
             :likelihood_cost => String(opts[:likelihood_cost]),
             :sleep_ms => Float64(opts[:sleep_ms]),
             :work_size =>

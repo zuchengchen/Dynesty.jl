@@ -29,6 +29,7 @@ const RESULTS_ALLOWED_KEYS = Set{Symbol}((
     :boundidx,
     :scale,
     :proposal_stats,
+    :parallel_stats,
     :blobs,
     :batch,
     :batch_nlive,

@@ -30,6 +30,145 @@ Base.@kwdef struct PoolUsage
     stopping::Bool = false
 end
 
+"""
+    ParallelStats()
+
+Lightweight wall-time and count instrumentation for sampler parallel paths.
+Times are recorded in seconds using Julia wall-clock time and are intended for
+within-run diagnostics rather than cross-machine benchmarking.
+"""
+Base.@kwdef mutable struct ParallelStats
+    initial_evaluation_count::Int = 0
+    initial_evaluation_tasks::Int = 0
+    initial_evaluation_wall_time::Float64 = 0.0
+    initial_evaluation_backend_wall_time::Float64 = 0.0
+    proposal_tasks_submitted::Int = 0
+    proposal_batches_submitted::Int = 0
+    proposal_wall_time::Float64 = 0.0
+    proposal_backend_wall_time::Float64 = 0.0
+    proposal_queue_wait_wall_time::Float64 = 0.0
+    bound_update_count::Int = 0
+    bound_update_wall_time::Float64 = 0.0
+    bound_update_backend_wall_time::Float64 = 0.0
+    stop_function_count::Int = 0
+    stop_function_wall_time::Float64 = 0.0
+    stop_function_backend_wall_time::Float64 = 0.0
+    map_backend_calls::Int = 0
+    map_backend_wall_time::Float64 = 0.0
+end
+
+function _parallel_stats_config(stats::ParallelStats)
+    return Dict{Symbol, Any}(
+        :initial_evaluation_count => stats.initial_evaluation_count,
+        :initial_evaluation_tasks => stats.initial_evaluation_tasks,
+        :initial_evaluation_wall_time => stats.initial_evaluation_wall_time,
+        :initial_evaluation_backend_wall_time => stats.initial_evaluation_backend_wall_time,
+        :proposal_tasks_submitted => stats.proposal_tasks_submitted,
+        :proposal_batches_submitted => stats.proposal_batches_submitted,
+        :proposal_wall_time => stats.proposal_wall_time,
+        :proposal_backend_wall_time => stats.proposal_backend_wall_time,
+        :proposal_queue_wait_wall_time => stats.proposal_queue_wait_wall_time,
+        :bound_update_count => stats.bound_update_count,
+        :bound_update_wall_time => stats.bound_update_wall_time,
+        :bound_update_backend_wall_time => stats.bound_update_backend_wall_time,
+        :stop_function_count => stats.stop_function_count,
+        :stop_function_wall_time => stats.stop_function_wall_time,
+        :stop_function_backend_wall_time => stats.stop_function_backend_wall_time,
+        :map_backend_calls => stats.map_backend_calls,
+        :map_backend_wall_time => stats.map_backend_wall_time,
+    )
+end
+
+function _parallel_stats_from_config(config)
+    isnothing(config) && return ParallelStats()
+    config isa ParallelStats && return deepcopy(config)
+    cfg = Dict{Symbol, Any}(Symbol(key) => value for (key, value) in config)
+    return ParallelStats(;
+        initial_evaluation_count=Int(get(cfg, :initial_evaluation_count, 0)),
+        initial_evaluation_tasks=Int(get(cfg, :initial_evaluation_tasks, 0)),
+        initial_evaluation_wall_time=Float64(get(cfg, :initial_evaluation_wall_time, 0.0)),
+        initial_evaluation_backend_wall_time=Float64(get(cfg, :initial_evaluation_backend_wall_time, 0.0)),
+        proposal_tasks_submitted=Int(get(cfg, :proposal_tasks_submitted, 0)),
+        proposal_batches_submitted=Int(get(cfg, :proposal_batches_submitted, 0)),
+        proposal_wall_time=Float64(get(cfg, :proposal_wall_time, 0.0)),
+        proposal_backend_wall_time=Float64(get(cfg, :proposal_backend_wall_time, 0.0)),
+        proposal_queue_wait_wall_time=Float64(get(cfg, :proposal_queue_wait_wall_time, 0.0)),
+        bound_update_count=Int(get(cfg, :bound_update_count, 0)),
+        bound_update_wall_time=Float64(get(cfg, :bound_update_wall_time, 0.0)),
+        bound_update_backend_wall_time=Float64(get(cfg, :bound_update_backend_wall_time, 0.0)),
+        stop_function_count=Int(get(cfg, :stop_function_count, 0)),
+        stop_function_wall_time=Float64(get(cfg, :stop_function_wall_time, 0.0)),
+        stop_function_backend_wall_time=Float64(get(cfg, :stop_function_backend_wall_time, 0.0)),
+        map_backend_calls=Int(get(cfg, :map_backend_calls, 0)),
+        map_backend_wall_time=Float64(get(cfg, :map_backend_wall_time, 0.0)),
+    )
+end
+
+function _record_initial_evaluation!(
+    stats::ParallelStats, ntasks::Integer, wall_time::Real, backend_time::Real
+)
+    stats.initial_evaluation_count += 1
+    stats.initial_evaluation_tasks += Int(ntasks)
+    stats.initial_evaluation_wall_time += Float64(wall_time)
+    stats.initial_evaluation_backend_wall_time += Float64(backend_time)
+    backend_time > 0 && _record_map_backend!(stats, backend_time)
+    return stats
+end
+
+function _record_proposal_batch!(
+    stats::ParallelStats, ntasks::Integer, wall_time::Real, backend_time::Real
+)
+    stats.proposal_tasks_submitted += Int(ntasks)
+    stats.proposal_batches_submitted += 1
+    stats.proposal_wall_time += Float64(wall_time)
+    stats.proposal_backend_wall_time += Float64(backend_time)
+    _record_map_backend!(stats, backend_time)
+    return stats
+end
+
+function _record_bound_update!(stats::ParallelStats, wall_time::Real; backend_time::Real=0.0)
+    stats.bound_update_count += 1
+    stats.bound_update_wall_time += Float64(wall_time)
+    stats.bound_update_backend_wall_time += Float64(backend_time)
+    backend_time > 0 && _record_map_backend!(stats, backend_time)
+    return stats
+end
+
+function _record_stop_function!(stats::ParallelStats, wall_time::Real; backend_time::Real=0.0)
+    stats.stop_function_count += 1
+    stats.stop_function_wall_time += Float64(wall_time)
+    stats.stop_function_backend_wall_time += Float64(backend_time)
+    backend_time > 0 && _record_map_backend!(stats, backend_time)
+    return stats
+end
+
+function _record_map_backend!(stats::ParallelStats, wall_time::Real)
+    stats.map_backend_calls += 1
+    stats.map_backend_wall_time += Float64(wall_time)
+    return stats
+end
+
+function _merge_parallel_stats!(target::ParallelStats, source::ParallelStats)
+    target.initial_evaluation_count += source.initial_evaluation_count
+    target.initial_evaluation_tasks += source.initial_evaluation_tasks
+    target.initial_evaluation_wall_time += source.initial_evaluation_wall_time
+    target.initial_evaluation_backend_wall_time += source.initial_evaluation_backend_wall_time
+    target.proposal_tasks_submitted += source.proposal_tasks_submitted
+    target.proposal_batches_submitted += source.proposal_batches_submitted
+    target.proposal_wall_time += source.proposal_wall_time
+    target.proposal_backend_wall_time += source.proposal_backend_wall_time
+    target.proposal_queue_wait_wall_time += source.proposal_queue_wait_wall_time
+    target.bound_update_count += source.bound_update_count
+    target.bound_update_wall_time += source.bound_update_wall_time
+    target.bound_update_backend_wall_time += source.bound_update_backend_wall_time
+    target.stop_function_count += source.stop_function_count
+    target.stop_function_wall_time += source.stop_function_wall_time
+    target.stop_function_backend_wall_time += source.stop_function_backend_wall_time
+    target.map_backend_calls += source.map_backend_calls
+    target.map_backend_wall_time += source.map_backend_wall_time
+    return target
+end
+
 function _pool_usage_key(raw_key)
     if raw_key isa Symbol
         key = raw_key
