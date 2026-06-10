@@ -235,9 +235,11 @@ end
 
 Base.Float64(value::LoglOutput) = value.logl
 Base.float(value::LoglOutput) = value.logl
-Base.isless(a::LoglOutput, b) = isless(a.logl, Float64(LoglOutput(b)))
+Base.isless(a::LoglOutput, b::LoglOutput) = isless(a.logl, b.logl)
+Base.isless(a::LoglOutput, b::Real) = isless(a.logl, Float64(b))
 Base.isless(a::Real, b::LoglOutput) = isless(Float64(a), b.logl)
-Base.:(==)(a::LoglOutput, b) = a.logl == Float64(LoglOutput(b))
+Base.:(==)(a::LoglOutput, b::LoglOutput) = a.logl == b.logl
+Base.:(==)(a::LoglOutput, b::Real) = a.logl == Float64(b)
 Base.:(==)(a::Real, b::LoglOutput) = Float64(a) == b.logl
 
 function Base.getproperty(value::LoglOutput, name::Symbol)
