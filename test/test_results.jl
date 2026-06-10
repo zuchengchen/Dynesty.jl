@@ -30,12 +30,38 @@ end
     updated = results_substitute(res, Dict(:logl => [-1.0, -2.0, -3.0]))
     @test updated.logl == [-1.0, -2.0, -3.0]
     @test res.logl == [-3.0, -2.0, -1.0]
+    ignored = results_substitute(res, Dict(:h => zeros(3), :nope => 1))
+    @test ignored.logl == res.logl
     @test_throws ArgumentError Results(
         samples=[1.0 2.0], samples_u=[0.1 0.2], samples_id=[1]
     )
     @test_throws ArgumentError Results(
         samples=[1.0], samples_u=[0.1], samples_id=[1], logl=[0.0], nope=1
     )
+
+    aliased = Results(;
+        samples=res.samples,
+        samples_u=res.samples_u,
+        samples_id=res.samples_id,
+        logl=res.logl,
+        nlive=res.nlive,
+        niter=res.niter,
+        ncall=res.ncall,
+        eff=res.eff,
+        blob=["a", "b", "c"],
+        samples_bound=[0, 1, 1],
+        batch=[0, 0, 1],
+    )
+    @test aliased.blobs == ["a", "b", "c"]
+    @test aliased.blob == aliased.blobs
+    @test aliased[:blob] == aliased.blobs
+    @test haskey(aliased, :blob)
+    @test aliased.boundidx == [0, 1, 1]
+    @test aliased.samples_bound == aliased.boundidx
+    @test aliased[:samples_bound] == aliased.boundidx
+    @test aliased.samples_batch == [0, 0, 1]
+    @test aliased.batch == aliased.samples_batch
+    @test aliased[:batch] == aliased.samples_batch
 end
 
 @testset "RunRecord" begin

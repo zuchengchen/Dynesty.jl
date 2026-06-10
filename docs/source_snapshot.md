@@ -60,8 +60,8 @@ Behavior references:
 - `tests/test_saver.py`
 - `tests/test_volume.py`
 
-Fixture metadata is recorded in `test/reference/python/fixtures/utils_core.json`
-for the Stage 1 core-utility cross-checks.
+Fixture metadata is recorded in the JSON files under
+`test/reference/python/fixtures/` for the current cross-check suite.
 
 Documentation and demo references:
 

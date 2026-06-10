@@ -14,6 +14,7 @@ end
 
 include("test_utils.jl")
 include("test_results.jl")
+include("test_results_postprocess.jl")
 include("test_persistence.jl")
 include("test_parallel.jl")
 include("test_bounding_unitcube_ellipsoid.jl")

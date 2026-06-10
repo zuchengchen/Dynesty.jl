@@ -56,3 +56,10 @@ Stage 5 static sampler tests follow the same randomness policy. They cover
 factory defaults, live-point initialization, a Gaussian static run, final live
 point handling, blob storage, bound updates, 1-based periodic/reflective
 settings, and `.jls` checkpoint restore using deterministic Julia seeds.
+
+Stage 6 results post-processing fixtures cover deterministic `reweight_run`,
+`unravel_run`, `merge_runs`, `check_result_static`, `_get_nsamps_samples_n`, and
+`_find_decrease` behavior. Random post-processing helpers (`jitter_run`,
+`resample_run`, and `kld_error`) are checked by invariants with deterministic
+Julia seeds because cross-language trajectory equality is intentionally out of
+scope.

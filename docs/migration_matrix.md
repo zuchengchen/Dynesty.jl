@@ -85,8 +85,8 @@ Statuses:
 | `dynesty.utils.get_print_fn_args` | `get_print_fn_args` | C | planned | `test/test_utils.jl` | not needed | Display helper. |
 | `dynesty.utils.print_fn_tqdm` | progress backend | C | replacement | `test/test_utils.jl` | not needed | TQDM-specific behavior replaced. |
 | `dynesty.utils.print_fn_fallback` | `print_fn_fallback` | C | planned | `test/test_utils.jl` | not needed | Display helper. |
-| `dynesty.utils.Results` | `Results` | A | implemented | `test/test_results.jl` | planned | Public results container; postprocessing fixture expansion continues in Stage 6. |
-| `dynesty.utils.results_substitute` | `results_substitute` | B | implemented | `test/test_results.jl` | planned | Results replacement helper. |
+| `dynesty.utils.Results` | `Results` | A | implemented | `test/test_results.jl`, `test/test_results_postprocess.jl` | `test/reference/python/fixtures/results_postprocess.json` | Public results container with Julia `blobs` plus compatibility aliases for Python `blob`, `samples_bound`, and `batch`. |
+| `dynesty.utils.results_substitute` | `results_substitute` | B | implemented | `test/test_results.jl`, `test/test_results_postprocess.jl` | `test/reference/python/fixtures/results_postprocess.json` | Results replacement helper; missing replacement keys are ignored like Python. |
 | `dynesty.utils.get_nonbounded` | `get_nonbounded` | B | planned | `test/test_utils.jl` | planned | Bound-type helper. |
 | `dynesty.utils.get_print_func` | `get_print_func` | C | planned | `test/test_utils.jl` | not needed | Display helper. |
 | `dynesty.utils.get_random_generator` | `get_random_generator` | B | planned | `test/test_utils.jl` | planned | RNG compatibility helper. |
@@ -97,20 +97,20 @@ Statuses:
 | `dynesty.utils.mean_and_cov` | `mean_and_cov` | A | implemented | `test/test_utils.jl` | `test/reference/python/fixtures/utils_core.json` | Weighted statistics. |
 | `dynesty.utils.resample_equal` | `resample_equal` | A | implemented | `test/test_utils.jl` | planned | Equal-weight resampling; statistical fixture expansion remains. |
 | `dynesty.utils.quantile` | `quantile` | A | implemented | `test/test_utils.jl` | planned | Weighted quantile. |
-| `dynesty.utils._get_nsamps_samples_n` | `_get_nsamps_samples_n` | B | planned | `test/test_results_postprocess.jl` | planned | Post-processing helper. |
-| `dynesty.utils._find_decrease` | `_find_decrease` | B | planned | `test/test_results_postprocess.jl` | planned | Post-processing helper. |
-| `dynesty.utils.jitter_run` | `jitter_run` | A | planned | `test/test_results_postprocess.jl` | planned | Error estimate helper. |
+| `dynesty.utils._get_nsamps_samples_n` | `_get_nsamps_samples_n` | B | implemented | `test/test_results_postprocess.jl` | `test/reference/python/fixtures/results_postprocess.json` | Post-processing helper for static/dynamic live-point counts. |
+| `dynesty.utils._find_decrease` | `_find_decrease` | B | implemented | `test/test_results_postprocess.jl` | `test/reference/python/fixtures/results_postprocess.json` | Post-processing helper; fixtures record Python 0-based and Julia 1-based half-open bounds. |
+| `dynesty.utils.jitter_run` | `jitter_run` | A | implemented | `test/test_results_postprocess.jl` | statistical/invariant | Prior-volume jitter error helper; stochastic checks use deterministic Julia seeds and invariants. |
 | `dynesty.utils.compute_integrals` | `compute_integrals` | A | implemented | `test/test_utils.jl` | `test/reference/python/fixtures/utils_core.json` | Evidence integral baseline. |
 | `dynesty.utils.progress_integration` | `progress_integration` | A | implemented | `test/test_utils.jl` | planned | Running evidence integration. |
-| `dynesty.utils.resample_run` | `resample_run` | A | planned | `test/test_results_postprocess.jl` | planned | Run resampling. |
-| `dynesty.utils.reweight_run` | `reweight_run` | A | planned | `test/test_results_postprocess.jl` | planned | Importance reweighting. |
-| `dynesty.utils.unravel_run` | `unravel_run` | A | planned | `test/test_results_postprocess.jl` | planned | Run unraveling. |
-| `dynesty.utils.merge_runs` | `merge_runs` | A | planned | `test/test_results_postprocess.jl` | planned | Run merge. |
-| `dynesty.utils.check_result_static` | `check_result_static` | A | planned | `test/test_results_postprocess.jl` | planned | Result validator. |
-| `dynesty.utils.kld_error` | `kld_error` | A | planned | `test/test_results_postprocess.jl` | planned | KLD error estimate. |
-| `dynesty.utils._prepare_for_merge` | `_prepare_for_merge` | B | planned | `test/test_results_postprocess.jl` | planned | Merge helper. |
-| `dynesty.utils._merge_two` | `_merge_two` | B | planned | `test/test_results_postprocess.jl` | planned | Merge helper. |
-| `dynesty.utils._kld_error` | `_kld_error` | B | planned | `test/test_results_postprocess.jl` | planned | KLD helper. |
+| `dynesty.utils.resample_run` | `resample_run` | A | implemented | `test/test_results_postprocess.jl` | statistical/invariant | Run resampling and return-index behavior; random draws checked by invariants. |
+| `dynesty.utils.reweight_run` | `reweight_run` | A | implemented | `test/test_results_postprocess.jl` | `test/reference/python/fixtures/results_postprocess.json` | Importance reweighting; deterministic fixture covers weights, evidence, errors, and `h`/`information` compatibility. |
+| `dynesty.utils.unravel_run` | `unravel_run` | A | implemented | `test/test_results_postprocess.jl` | `test/reference/python/fixtures/results_postprocess.json` | Run unraveling into one-live-point strands. |
+| `dynesty.utils.merge_runs` | `merge_runs` | A | implemented | `test/test_results_postprocess.jl` | `test/reference/python/fixtures/results_postprocess.json` | Run merge, including unraveled strand merge and single-result edge behavior. |
+| `dynesty.utils.check_result_static` | `check_result_static` | A | implemented | `test/test_results_postprocess.jl` | `test/reference/python/fixtures/results_postprocess.json` | Static-result normalization for dynamic-like results with static live counts. |
+| `dynesty.utils.kld_error` | `kld_error` | A | implemented | `test/test_results_postprocess.jl` | statistical/invariant | KLD error estimate over jitter/resample realizations. |
+| `dynesty.utils._prepare_for_merge` | `_prepare_for_merge` | B | implemented | `test/test_results_postprocess.jl` | `test/reference/python/fixtures/results_postprocess.json` | Merge helper covered indirectly through `merge_runs`. |
+| `dynesty.utils._merge_two` | `_merge_two` | B | implemented | `test/test_results_postprocess.jl` | `test/reference/python/fixtures/results_postprocess.json` | Pairwise merge helper covered indirectly through `merge_runs`. |
+| `dynesty.utils._kld_error` | `_kld_error` | B | implemented | `test/test_results_postprocess.jl` | statistical/invariant | Map-friendly KLD helper. |
 | `dynesty.utils.restore_sampler` | `restore_sampler` | A | implemented | `test/test_persistence.jl` | not needed | Julia Serialization checkpoint restore; requires user functions again. |
 | `dynesty.utils.save_sampler` | `save_sampler` / `checkpoint!` | A | implemented | `test/test_persistence.jl` | not needed | Julia Serialization checkpoint save. |
 | `dynesty.utils._parse_pool_queue` | `_normalize_queue_size` | B | implemented | `test/test_parallel.jl` | not needed | Julia backend queue parsing. |

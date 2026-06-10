@@ -25,6 +25,9 @@ Current fixture files:
   bounding helper cross-checks.
 - `fixtures/friends_core.json`: RadFriends, SupFriends, and friends-radius
   helper cross-checks.
+- `fixtures/results_postprocess.json`: deterministic results post-processing
+  cross-checks for reweighting, unraveling, merging, static-result conversion,
+  and live-point-count helpers.
 
 Current source snapshot:
 
@@ -39,3 +42,8 @@ Current source snapshot:
 
 Deterministic scalar/vector fixtures use `rtol=1e-10` and `atol=1e-12` unless a
 stricter tolerance is recorded in the JSON.
+
+Index-bearing fixtures record both Python 0-based values and Julia 1-based
+values explicitly. Results post-processing fixtures also preserve Python's
+public `information` field behavior separately from the internal `h` replacement
+key used by several upstream helper functions.

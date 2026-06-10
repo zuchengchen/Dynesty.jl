@@ -227,6 +227,122 @@ def main() -> None:
         json.dumps(friends_fixture, indent=2, sort_keys=True) + "\n"
     )
 
+    post_samples = np.array(
+        [
+            [0.10, 0.20],
+            [0.30, 0.40],
+            [0.50, 0.60],
+            [0.70, 0.80],
+            [0.90, 1.00],
+            [1.10, 1.20],
+        ]
+    )
+    post_samples_u = post_samples / 2.0
+    post_samples_id = np.array([0, 1, 0, 1, 0, 1])
+    post_samples_it = np.arange(1, 7)
+    post_logl = np.array([-5.0, -4.2, -3.1, -2.2, -1.3, -0.7])
+    post_logvol = np.cumsum(np.log(np.ones(6) * 3.0 / 4.0))
+    post_logwt, post_logz, post_logzvar, post_h = utils.compute_integrals(
+        logl=post_logl, logvol=post_logvol
+    )
+    post_res = utils.Results(
+        dict(
+            nlive=3,
+            niter=6,
+            ncall=np.array([2, 3, 2, 3, 1, 1]),
+            eff=50.0,
+            samples=post_samples,
+            samples_u=post_samples_u,
+            samples_id=post_samples_id,
+            samples_it=post_samples_it,
+            logwt=post_logwt,
+            logl=post_logl,
+            logvol=post_logvol,
+            logz=post_logz,
+            logzerr=np.sqrt(np.maximum(post_logzvar, 0)),
+            information=post_h,
+            blob=np.array(["a", "b", "c", "d", "e", "f"], dtype=object),
+            proposal_stats=np.array([None] * 6, dtype=object),
+        )
+    )
+    reweighted = utils.reweight_run(post_res, post_logl - np.array([0.0, 0.1, 0.0, 0.2, 0.0, 0.3]))
+    strands = utils.unravel_run(post_res, print_progress=False)
+    merged = utils.merge_runs(strands, print_progress=False)
+    dyn_static = utils.Results(
+        dict(
+            niter=6,
+            ncall=np.array([1, 1, 1, 1, 1, 1]),
+            eff=100.0,
+            samples=post_samples,
+            samples_u=post_samples_u,
+            samples_id=post_samples_id,
+            samples_it=post_samples_it,
+            samples_n=np.array([3, 3, 3, 3, 3, 3]),
+            logwt=post_logwt,
+            logl=post_logl,
+            logvol=post_logvol,
+            logz=post_logz,
+            logzerr=np.sqrt(np.maximum(post_logzvar, 0)),
+            information=post_h,
+            blob=np.array(["a", "b", "c", "d", "e", "f"], dtype=object),
+            proposal_stats=np.array([None] * 6, dtype=object),
+        )
+    )
+    checked = utils.check_result_static(dyn_static)
+    fd_mask, fd_start, fd_bounds = utils._find_decrease(np.array([3, 2, 1, 4, 4, 3, 2]))
+
+    def result_summary(res):
+        out = {
+            "isdynamic": bool(res.isdynamic()),
+            "niter": int(res.niter),
+            "ncall": np.asarray(res.ncall).tolist(),
+            "samples": np.asarray(res.samples).tolist(),
+            "samples_u": np.asarray(res.samples_u).tolist(),
+            "samples_id_python_0_based": np.asarray(res.samples_id).astype(int).tolist(),
+            "samples_id_julia_1_based": (np.asarray(res.samples_id).astype(int) + 1).tolist(),
+            "samples_it": np.asarray(res.samples_it).astype(int).tolist(),
+            "logl": np.asarray(res.logl).tolist(),
+            "logvol": np.asarray(res.logvol).tolist(),
+            "logwt": np.asarray(res.logwt).tolist(),
+            "logz": np.asarray(res.logz).tolist(),
+            "logzerr": np.asarray(res.logzerr).tolist(),
+        }
+        if "nlive" in res.keys():
+            out["nlive"] = int(res.nlive)
+        if "samples_n" in res.keys():
+            out["samples_n"] = np.asarray(res.samples_n).astype(int).tolist()
+        return out
+
+    postprocess_fixture = {
+        "source": fixture["source"],
+        "input": result_summary(post_res),
+        "reweight_logp_new": (post_logl - np.array([0.0, 0.1, 0.0, 0.2, 0.0, 0.3])).tolist(),
+        "reweighted": {
+            "logwt": np.asarray(reweighted.logwt).tolist(),
+            "logz": np.asarray(reweighted.logz).tolist(),
+            "logzerr": np.asarray(reweighted.logzerr).tolist(),
+            "information": np.asarray(reweighted.information).tolist(),
+        },
+        "unravel": {
+            "nstrands": len(strands),
+            "strands": [result_summary(strand) for strand in strands],
+        },
+        "merged": result_summary(merged),
+        "checked_static": result_summary(checked),
+        "find_decrease": {
+            "samples_n": [3, 2, 1, 4, 4, 3, 2],
+            "mask": fd_mask.tolist(),
+            "nlive_start": np.asarray(fd_start).astype(int).tolist(),
+            "bounds_python_half_open": [list(map(int, bound)) for bound in fd_bounds],
+            "bounds_julia_half_open": [[int(bound[0]) + 1, int(bound[1]) + 1] for bound in fd_bounds],
+        },
+        "rtol": 1e-10,
+        "atol": 1e-12,
+    }
+    (FIXTURES / "results_postprocess.json").write_text(
+        json.dumps(postprocess_fixture, indent=2, sort_keys=True) + "\n"
+    )
+
 
 if __name__ == "__main__":
     main()
