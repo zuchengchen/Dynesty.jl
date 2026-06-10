@@ -135,6 +135,7 @@ function parse_cli(args)
         :quick_dlogz => 0.5,
         :seed => 20240610,
         :queue_size => min(max(Threads.nthreads(), 1), 31),
+        :proposal_scheduler => "batch",
         :likelihood_cost => "cheap",
         :sleep_ms => 0.0,
         :work_size => nothing,
@@ -166,6 +167,9 @@ function parse_cli(args)
             i += 2
         elseif arg == "--queue-size"
             opts[:queue_size] = parse(Int, args[i + 1])
+            i += 2
+        elseif arg == "--proposal-scheduler"
+            opts[:proposal_scheduler] = args[i + 1]
             i += 2
         elseif arg == "--likelihood-cost"
             opts[:likelihood_cost] = args[i + 1]
@@ -202,6 +206,7 @@ function run_julia_pe(opts)
         rng=MersenneTwister(Int(opts[:seed])),
         parallel=:threads,
         queue_size,
+        proposal_scheduler=String(opts[:proposal_scheduler]),
         enlarge=1.1,
         bootstrap=0,
     )
@@ -236,6 +241,7 @@ function main(args=ARGS)
             :implementation => "Dynesty.jl",
             :backend => "ThreadedMapBackend",
             :queue_size => fit.sampler.map_backend.queue_size,
+            :proposal_scheduler => fit.sampler.proposal_scheduler,
             :threads => Threads.nthreads(),
             :proposal_evolve_parallel => fit.sampler.proposal_tasks_submitted > 0,
             :proposal_tasks_submitted => fit.sampler.proposal_tasks_submitted,

@@ -17,7 +17,9 @@ default.
 from __future__ import annotations
 
 import argparse
+import importlib.util
 import json
+import multiprocessing
 import sys
 import time
 from pathlib import Path
@@ -124,6 +126,50 @@ def write_json(path: Path, payload: dict) -> None:
         handle.write("\n")
 
 
+def module_available(name: str) -> bool:
+    return importlib.util.find_spec(name) is not None
+
+
+def module_version(name: str) -> str | None:
+    try:
+        module = __import__(name)
+    except Exception:
+        return None
+    return getattr(module, "__version__", "unknown")
+
+
+def _fit_with_pool(
+    args: argparse.Namespace,
+    pool,
+    loglike,
+    ptform,
+):
+    sampler = dynesty.NestedSampler(
+        loglike,
+        ptform,
+        ndim=len(TRUE_THETA),
+        nlive=args.nlive_effective,
+        bound="single",
+        sample="unif",
+        pool=pool,
+        queue_size=args.queue_size,
+        use_pool=args.use_pool,
+        rstate=np.random.default_rng(args.seed),
+        enlarge=1.1,
+        bootstrap=0,
+    )
+    sampler.run_nested(
+        dlogz=args.dlogz_effective,
+        print_progress=False,
+        add_live=True,
+    )
+    res = sampler.results
+    samples = np.asarray(res.samples, dtype=float)
+    weights = normalized_weights(res.logwt, res.logz)
+    mean, cov = weighted_mean_cov(samples, weights)
+    return res, samples, weights, mean, cov
+
+
 def run_python_pe(args: argparse.Namespace):
     use_pool = {
         "prior_transform": True,
@@ -131,32 +177,13 @@ def run_python_pe(args: argparse.Namespace):
         "propose_point": True,
         "update_bound": True,
     }
+    args.use_pool = use_pool
     loglike = WorkLogLikelihood(args.likelihood_cost, args.sleep_ms, args.work_size)
+    if args.pool_kind == "multiprocessing":
+        with multiprocessing.Pool(args.nproc) as pool:
+            return _fit_with_pool(args, pool, loglike, prior_transform)
     with dypool.Pool(args.nproc, loglike, prior_transform) as pool:
-        sampler = dynesty.NestedSampler(
-            pool.loglike,
-            pool.prior_transform,
-            ndim=len(TRUE_THETA),
-            nlive=args.nlive_effective,
-            bound="single",
-            sample="unif",
-            pool=pool,
-            queue_size=args.queue_size,
-            use_pool=use_pool,
-            rstate=np.random.default_rng(args.seed),
-            enlarge=1.1,
-            bootstrap=0,
-        )
-        sampler.run_nested(
-            dlogz=args.dlogz_effective,
-            print_progress=False,
-            add_live=True,
-        )
-        res = sampler.results
-        samples = np.asarray(res.samples, dtype=float)
-        weights = normalized_weights(res.logwt, res.logz)
-        mean, cov = weighted_mean_cov(samples, weights)
-        return res, samples, weights, mean, cov
+        return _fit_with_pool(args, pool, pool.loglike, pool.prior_transform)
 
 
 def parse_args(argv: list[str] | None = None) -> argparse.Namespace:
@@ -173,6 +200,12 @@ def parse_args(argv: list[str] | None = None) -> argparse.Namespace:
     parser.add_argument("--seed", type=int, default=20240611)
     parser.add_argument("--nproc", type=int, default=31)
     parser.add_argument("--queue-size", type=int, default=31)
+    parser.add_argument(
+        "--pool-kind",
+        choices=("dynesty", "multiprocessing"),
+        default="dynesty",
+        help="Use dynesty.pool.Pool or standard multiprocessing.Pool.",
+    )
     parser.add_argument(
         "--likelihood-cost", choices=("cheap", "medium", "heavy"), default="cheap"
     )
@@ -204,9 +237,19 @@ def main(argv: list[str] | None = None) -> None:
         metadata_path,
         {
             "implementation": "Python dynesty",
+            "python_executable": sys.executable,
+            "python_version": sys.version,
             "dynesty_file": str(Path(dynesty.__file__).resolve()),
             "dynesty_version": getattr(dynesty, "__version__", "unknown"),
-            "pool": "dynesty.pool.Pool",
+            "numpy_version": np.__version__,
+            "scipy_version": module_version("scipy"),
+            "corner_available": module_available("corner"),
+            "matplotlib_available": module_available("matplotlib"),
+            "pool": "multiprocessing.Pool"
+            if args.pool_kind == "multiprocessing"
+            else "dynesty.pool.Pool",
+            "pool_kind": args.pool_kind,
+            "worker_label": f"Python {args.nproc} worker processes",
             "nproc": args.nproc,
             "queue_size": args.queue_size,
             "likelihood_cost": args.likelihood_cost,
@@ -234,7 +277,8 @@ def main(argv: list[str] | None = None) -> None:
         "Python dynesty parallel PE: "
         f"nlive={args.nlive_effective} nsamples={len(samples)} "
         f"logz={res.logz[-1]:.6f} logzerr={res.logzerr[-1]:.6f} "
-        f"nproc={args.nproc} queue_size={args.queue_size} wrote {samples_path}"
+        f"pool={args.pool_kind} nproc={args.nproc} queue_size={args.queue_size} "
+        f"wrote {samples_path}"
     )
 
 
