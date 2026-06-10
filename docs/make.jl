@@ -14,12 +14,19 @@ makedocs(;
     checkdocs=:exports,
     pages=[
         "Home" => "index.md",
+        "Guides" => [
+            "Quickstart" => "quickstart.md",
+            "Dynamic Sampling" => "dynamic.md",
+            "Errors" => "errors.md",
+            "Plotting" => "plotting.md",
+        ],
         "Manual" => [
             "Getting Started" => "manual/getting-started.md",
             "Dynamic Sampling" => "manual/dynamic.md",
             "Results and Persistence" => "manual/results-persistence.md",
             "Plotting Data" => "manual/plotting.md",
         ],
+        "API Overview" => "api.md",
         "API" => [
             "Samplers" => "api/samplers.md",
             "Bounds" => "api/bounds.md",
