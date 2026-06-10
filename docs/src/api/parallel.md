@@ -10,6 +10,7 @@ sampler = NestedSampler(
     ndim;
     parallel=:threads,
     queue_size=4,
+    proposal_scheduler=:batch,
 )
 ```
 
@@ -73,6 +74,15 @@ internal-sampler configuration, and selected live point. If a later iteration
 has a higher likelihood threshold, the candidate is still checked against that
 new threshold before acceptance.
 
+The proposal scheduler defaults to `proposal_scheduler=:batch`, which maps a
+full queue of candidates and then consumes that queue in order. Threaded runs
+can opt into `proposal_scheduler=:async` to keep proposal tasks in flight while
+the main sampler consumes completed ordered results. `proposal_scheduler=:auto`
+currently uses the async path for threaded backends and the batch path for
+serial, distributed, and custom backends. Async tasks are not serialized in
+checkpoints; checkpointing drains outstanding threaded tasks before writing the
+ordinary sampler snapshot.
+
 Bound refreshes remain serial by default. With `pool_usage=PoolUsage(bounds=true)`
 or `use_pool=Dict("update_bound" => true)`, built-in ellipsoid and friends
 bounds can use the configured backend for bootstrap tasks when `bootstrap > 0`.
@@ -89,13 +99,14 @@ each task, and custom stop functions keep the existing serial call path unless
 they explicitly implement their own mapping behavior.
 
 Reproducibility is guaranteed for the same Julia seed, backend kind, backend
-configuration, thread count, `queue_size`, and `PoolUsage`. Trajectories are
+configuration, thread count, `queue_size`, `PoolUsage`, and
+`proposal_scheduler`. Trajectories are
 not required to match across backends or with Python dynesty, and changing
-`queue_size` or pool usage can change accepted proposals. Checkpoints save
-backend configuration, pool usage policy, and proposal queue counters rather
-than worker process objects; restored distributed backends only use worker IDs
-that are live in the current Julia session and otherwise fall back to serial
-ordered-map execution.
+`queue_size`, pool usage, or scheduler can change accepted proposals.
+Checkpoints save backend configuration, pool usage policy, proposal scheduler,
+and proposal queue counters rather than worker process objects; restored
+distributed backends only use worker IDs that are live in the current Julia
+session and otherwise fall back to serial ordered-map execution.
 
 ## Instrumentation
 
@@ -112,6 +123,8 @@ Key fields include:
 - `proposal_tasks_submitted`, `proposal_batches_submitted`,
   `proposal_wall_time`, and `proposal_backend_wall_time` for proposal/evolve
   queue work.
+- `proposal_queue_wait_wall_time` for time the async scheduler spends waiting
+  for the next ordered threaded proposal task.
 - `bound_update_count`, `bound_update_wall_time`, and
   `bound_update_backend_wall_time` for bound refreshes and opt-in bootstrap
   backend work.
@@ -125,6 +138,14 @@ Backend wall-time fields include the time spent inside the backend map call as
 observed by the caller; threaded and distributed backends are not directly
 comparable without considering worker count, serialization, and user-function
 cost.
+
+For very cheap likelihoods, parallel scheduling can dominate useful work.
+Dynesty.jl does not silently change queue size or scheduler at runtime; instead
+it records the timing fields above and may emit a one-time hint when observed
+proposal tasks are extremely cheap. Compare `proposal_backend_wall_time`,
+`proposal_queue_wait_wall_time`, and total sampler runtime before choosing
+between serial execution, a smaller `queue_size`, `proposal_scheduler=:batch`,
+and `proposal_scheduler=:async`.
 
 Distributed proposal/evolve queue coverage is available as an extended test:
 set `DYNESTY_RUN_DISTRIBUTED_TESTS=true` before running the test suite.

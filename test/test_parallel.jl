@@ -129,6 +129,13 @@ end
     @test length(results(sampler).logl) == 5
 end
 
+@testset "Proposal scheduler parsing" begin
+    @test Dynesty._proposal_scheduler_symbol(:batch) == :batch
+    @test Dynesty._proposal_scheduler_symbol("async") == :async
+    @test Dynesty._proposal_scheduler_symbol(:auto) == :auto
+    @test_throws ArgumentError Dynesty._proposal_scheduler_symbol(:streaming)
+end
+
 if get(ENV, "DYNESTY_RUN_DISTRIBUTED_TESTS", "false") == "true"
     @testset "Distributed proposal/evolve queue" begin
         added_workers = Int[]

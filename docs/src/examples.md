@@ -50,5 +50,8 @@ python examples/pe_parallel_corner.py --nsamples-plot 15000 \
 in its metadata and errors if a queued threaded run never submits
 proposal/evolve work through the backend. Use
 `--likelihood-cost cheap|medium|heavy`, `--work-size`, or `--sleep-ms` to
-separate scheduling overhead from likelihood cost. Outputs go to
-`examples/output/`, which should remain uncommitted.
+separate scheduling overhead from likelihood cost. For cheap likelihoods,
+compare serial runs, smaller `queue_size` values, and
+`proposal_scheduler=:async` while watching `proposal_backend_wall_time` and
+`proposal_queue_wait_wall_time`. Outputs go to `examples/output/`, which should
+remain uncommitted.

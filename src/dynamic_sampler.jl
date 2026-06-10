@@ -58,6 +58,7 @@ mutable struct DynamicSampler{L, P}
     map_backend::AbstractMapBackend
     pool_usage::PoolUsage
     parallel_stats::ParallelStats
+    proposal_scheduler::Symbol
     periodic::Any
     reflective::Any
     walks::Any
@@ -112,6 +113,7 @@ function DynamicSampler(
     queue_size=nothing,
     pool_usage=nothing,
     use_pool=nothing,
+    proposal_scheduler=:batch,
     enlarge=nothing,
     bootstrap=nothing,
     bound_enlarge=nothing,
@@ -147,6 +149,7 @@ function DynamicSampler(
     rng_obj isa AbstractRNG || throw(ArgumentError("rng/rstate must be an AbstractRNG"))
     backend = _get_map_backend(parallel, map_backend, queue_size)
     usage = _get_pool_usage(pool_usage, use_pool)
+    scheduler = _proposal_scheduler_symbol(proposal_scheduler)
 
     sampling_v = isnothing(sampling) ? sample : sampling
     bounding_v = isnothing(bounding) ? bound : bounding
@@ -199,6 +202,7 @@ function DynamicSampler(
         backend,
         usage,
         ParallelStats(),
+        scheduler,
         periodic,
         reflective,
         walks,
@@ -496,6 +500,11 @@ function _configure_batch_sampler(
     pool_usage = _pool_usage_from_config(
         _dynamic_get(main_sampler, (:pool_usage, :pool_usage_config); default=nothing)
     )
+    proposal_scheduler = _proposal_scheduler_symbol(
+        _dynamic_get(
+            main_sampler, (:proposal_scheduler,); default=:batch
+        ),
+    )
     sampling = _dynamic_get(main_sampler, (:sampling, :sample, :sample_kind); default=:auto)
     bounding = _dynamic_get(main_sampler, (:bounding, :bound, :bound_kind); default=:multi)
     periodic = _dynamic_get(main_sampler, (:periodic,); default=nothing)
@@ -581,6 +590,7 @@ function _configure_batch_sampler(
             copy_inputs,
             map_backend,
             pool_usage,
+            proposal_scheduler,
             bound_enlarge,
             bound_bootstrap,
             save_bounds,
@@ -623,6 +633,7 @@ function _configure_batch_sampler(
             copy_inputs,
             map_backend,
             pool_usage,
+            proposal_scheduler,
             bound_enlarge,
             bound_bootstrap,
             save_bounds,
@@ -685,6 +696,7 @@ function _configure_batch_sampler(
             copy_inputs,
             map_backend,
             pool_usage,
+            proposal_scheduler,
             bound_enlarge,
             bound_bootstrap,
             save_bounds,
@@ -729,6 +741,7 @@ function _dynamic_nested_sampler_for_batch(
     copy_inputs,
     map_backend,
     pool_usage,
+    proposal_scheduler,
     bound_enlarge,
     bound_bootstrap,
     save_bounds,
@@ -757,6 +770,7 @@ function _dynamic_nested_sampler_for_batch(
         copy_inputs,
         map_backend,
         pool_usage,
+        proposal_scheduler,
     )
     sampler.save_bounds = save_bounds
     sampler.logl_first_update = logl_first_update
@@ -1308,6 +1322,7 @@ function run_nested!(
             rng=sampler.rng,
             map_backend=sampler.map_backend,
             pool_usage=sampler.pool_usage,
+            proposal_scheduler=sampler.proposal_scheduler,
             live_points,
             enlarge=sampler.bound_enlarge,
             bootstrap=sampler.bound_bootstrap,
@@ -1493,6 +1508,7 @@ function sampler_snapshot(sampler::DynamicSampler)
         :map_backend_config => _backend_config(sampler.map_backend),
         :pool_usage_config => _pool_usage_config(sampler.pool_usage),
         :parallel_stats => _parallel_stats_config(sampler.parallel_stats),
+        :proposal_scheduler => sampler.proposal_scheduler,
         :periodic => sampler.periodic,
         :reflective => sampler.reflective,
         :walks => sampler.walks,
@@ -1541,6 +1557,9 @@ function _restore_dynamic_sampler(state::AbstractDict, loglikelihood, prior_tran
         rng=state[:rng],
         map_backend=_map_backend_from_config(get(state, :map_backend_config, nothing)),
         pool_usage=_pool_usage_from_config(get(state, :pool_usage_config, nothing)),
+        proposal_scheduler=_proposal_scheduler_symbol(
+            get(state, :proposal_scheduler, :batch)
+        ),
         enlarge=state[:bound_enlarge],
         bootstrap=state[:bound_bootstrap],
         walks=state[:walks],

@@ -3,6 +3,25 @@ using Random
 const LOWL_VAL = -1.0e300
 const BOUND_OPTIONS = (:none, :single, :multi, :balls, :cubes)
 const SAMPLE_OPTIONS = (:auto, :unif, :rwalk, :slice, :rslice)
+const PROPOSAL_SCHEDULER_OPTIONS = (:batch, :async, :auto)
+
+struct ProposalTaskInput
+    slot::Int
+    loglstar::Float64
+    u::Vector{Float64}
+    axes::Matrix{Float64}
+    bound::AbstractBound
+    internal_sampler::AbstractInternalSampler
+    ndim::Int
+    ncdim::Int
+end
+
+function Base.show(io::IO, input::ProposalTaskInput)
+    print(
+        io,
+        "ProposalTaskInput(slot=$(input.slot), loglstar=$(input.loglstar), sampler=$(typeof(input.internal_sampler)))",
+    )
+end
 
 """
     NestedSampler(loglikelihood, prior_transform, ndim; kwargs...)
@@ -61,28 +80,16 @@ mutable struct NestedSampler{L, P}
     plateau_mode::Bool
     plateau_counter::Int
     plateau_logdvol::Float64
+    cheap_likelihood_hint_issued::Bool
     proposal_queue::Vector{SamplerReturn}
     proposal_queue_loglstar::Float64
+    proposal_scheduler::Symbol
+    proposal_async_tasks::Vector{Task}
+    proposal_async_inputs::Vector{ProposalTaskInput}
+    proposal_async_loglstar::Float64
+    proposal_async_since_update::Int
     proposal_tasks_submitted::Int
     proposal_batches_submitted::Int
-end
-
-struct ProposalTaskInput
-    slot::Int
-    loglstar::Float64
-    u::Vector{Float64}
-    axes::Matrix{Float64}
-    bound::AbstractBound
-    internal_sampler::AbstractInternalSampler
-    ndim::Int
-    ncdim::Int
-end
-
-function Base.show(io::IO, input::ProposalTaskInput)
-    print(
-        io,
-        "ProposalTaskInput(slot=$(input.slot), loglstar=$(input.loglstar), sampler=$(typeof(input.internal_sampler)))",
-    )
 end
 
 function _option_symbol(value, allowed, kind::AbstractString)
@@ -97,6 +104,10 @@ function _option_symbol(value, allowed, kind::AbstractString)
         ),
     )
     return sym
+end
+
+function _proposal_scheduler_symbol(value)
+    return _option_symbol(value, PROPOSAL_SCHEDULER_OPTIONS, "proposal scheduler")
 end
 
 function _get_bound(bounding, ndim::Integer)
@@ -464,6 +475,7 @@ function NestedSampler(
     queue_size=nothing,
     pool_usage=nothing,
     use_pool=nothing,
+    proposal_scheduler=:batch,
     live_points=nothing,
     enlarge=nothing,
     bootstrap=nothing,
@@ -498,6 +510,7 @@ function NestedSampler(
     rng_obj isa AbstractRNG || throw(ArgumentError("rng/rstate must be an AbstractRNG"))
     backend = _get_map_backend(parallel, map_backend, queue_size)
     usage = _get_pool_usage(pool_usage, use_pool)
+    scheduler = _proposal_scheduler_symbol(proposal_scheduler)
     first_update_d =
         isnothing(first_update) ? Dict{Symbol, Any}() : _check_first_update(first_update)
 
@@ -580,8 +593,14 @@ function NestedSampler(
         false,
         0,
         -Inf,
+        false,
         SamplerReturn[],
         -Inf,
+        scheduler,
+        Task[],
+        ProposalTaskInput[],
+        -Inf,
+        0,
         0,
         0,
     )
@@ -840,9 +859,24 @@ _proposal_queue_enabled(sampler::NestedSampler) =
     !(sampler.map_backend isa SerialMapBackend) &&
     _proposal_queue_size(sampler) > 1
 
+function _proposal_async_queue_size(sampler::NestedSampler)
+    return min(_proposal_queue_size(sampler), max(Threads.nthreads(), 1))
+end
+
+_proposal_async_enabled(sampler::NestedSampler) =
+    _proposal_queue_enabled(sampler) &&
+    (sampler.proposal_scheduler === :async || sampler.proposal_scheduler === :auto) &&
+    sampler.map_backend isa ThreadedMapBackend &&
+    _proposal_async_queue_size(sampler) > 1
+
 function _clear_proposal_queue!(sampler::NestedSampler)
+    _discard_proposal_async!(sampler)
     empty!(sampler.proposal_queue)
     sampler.proposal_queue_loglstar = -Inf
+    empty!(sampler.proposal_async_tasks)
+    empty!(sampler.proposal_async_inputs)
+    sampler.proposal_async_loglstar = -Inf
+    sampler.proposal_async_since_update = 0
     return sampler
 end
 
@@ -885,6 +919,51 @@ function _proposal_batch_seed!(rng::AbstractRNG)
     return Int(rand(rng, UInt64) % UInt64(typemax(Int)))
 end
 
+function _proposal_sample_task(
+    input::ProposalTaskInput,
+    prior_transform,
+    loglikelihood;
+    blob::Bool,
+    copy_inputs::Bool,
+    backend_kind_value::Symbol,
+    seed::Integer,
+)
+    try
+        return _proposal_sample(
+            input,
+            prior_transform,
+            loglikelihood;
+            blob,
+            copy_inputs,
+            rng=MersenneTwister(seed),
+        )
+    catch err
+        throw(
+            MapTaskError(
+                backend_kind_value,
+                input.slot,
+                _input_context(input),
+                err,
+            ),
+        )
+    end
+end
+
+function _maybe_warn_cheap_likelihood!(sampler::NestedSampler)
+    sampler.cheap_likelihood_hint_issued && return sampler
+    sampler.proposal_scheduler === :async && return sampler
+    stats = sampler.parallel_stats
+    stats.proposal_tasks_submitted >= max(32, 4 * _proposal_queue_size(sampler)) || return sampler
+    stats.proposal_backend_wall_time > 0 || return sampler
+    avg_task_wall = stats.proposal_backend_wall_time / stats.proposal_tasks_submitted
+    avg_task_wall <= 2.0e-5 || return sampler
+    @warn "Dynesty proposal tasks are very cheap relative to parallel scheduling; consider `parallel=:serial`, a smaller `queue_size`, or `proposal_scheduler=:async` for this model." avg_task_wall queue_size = _proposal_queue_size(
+        sampler
+    )
+    sampler.cheap_likelihood_hint_issued = true
+    return sampler
+end
+
 function _fill_proposal_queue!(sampler::NestedSampler, loglstar::Real)
     isempty(sampler.proposal_queue) || return sampler
     proposal_start = time()
@@ -919,11 +998,112 @@ function _fill_proposal_queue!(sampler::NestedSampler, loglstar::Real)
     _record_proposal_batch!(
         sampler.parallel_stats, length(inputs), time() - proposal_start, backend_time
     )
+    _maybe_warn_cheap_likelihood!(sampler)
     return sampler
+end
+
+function _proposal_async_spawn!(sampler::NestedSampler, loglstar::Real)
+    slot = sampler.proposal_tasks_submitted + 1
+    input = only(_proposal_task_inputs(sampler, loglstar, 1))
+    input = ProposalTaskInput(
+        slot,
+        input.loglstar,
+        input.u,
+        input.axes,
+        input.bound,
+        input.internal_sampler,
+        input.ndim,
+        input.ncdim,
+    )
+    seed = _proposal_batch_seed!(sampler.rng)
+    prior_transform = sampler.prior_transform
+    loglikelihood = sampler.loglikelihood
+    blob = sampler.blob
+    copy_inputs = sampler.copy_inputs
+    backend_kind_value = backend_kind(sampler.map_backend)
+    task = Threads.@spawn _proposal_sample_task(
+        $input,
+        $prior_transform,
+        $loglikelihood;
+        blob=$blob,
+        copy_inputs=$copy_inputs,
+        backend_kind_value=$backend_kind_value,
+        seed=$seed,
+    )
+    push!(sampler.proposal_async_tasks, task)
+    push!(sampler.proposal_async_inputs, input)
+    sampler.proposal_tasks_submitted += 1
+    sampler.parallel_stats.proposal_tasks_submitted += 1
+    return sampler
+end
+
+function _ensure_proposal_async_tasks!(sampler::NestedSampler, loglstar::Real)
+    while length(sampler.proposal_async_tasks) < _proposal_async_queue_size(sampler)
+        _proposal_async_spawn!(sampler, loglstar)
+    end
+    sampler.proposal_async_loglstar = Float64(loglstar)
+    return sampler
+end
+
+function _discard_proposal_async!(sampler::NestedSampler)
+    for task in sampler.proposal_async_tasks
+        fetch(task)
+    end
+    empty!(sampler.proposal_async_tasks)
+    empty!(sampler.proposal_async_inputs)
+    sampler.proposal_async_loglstar = -Inf
+    return sampler
+end
+
+function _take_proposal_async!(sampler::NestedSampler, loglstar::Real)
+    if isempty(sampler.proposal_async_tasks)
+        _update_bound_if_needed!(sampler, loglstar; ncall=sampler.ncall)
+        _ensure_proposal_async_tasks!(sampler, loglstar)
+    end
+
+    task = popfirst!(sampler.proposal_async_tasks)
+    input = popfirst!(sampler.proposal_async_inputs)
+    wait_start = time()
+    ret = fetch(task)
+    wait_time = time() - wait_start
+    sampler.parallel_stats.proposal_queue_wait_wall_time += wait_time
+    sampler.parallel_stats.proposal_wall_time += wait_time
+    sampler.parallel_stats.proposal_backend_wall_time += wait_time
+    if wait_time > 0
+        _record_map_backend!(sampler.parallel_stats, wait_time)
+    end
+    ret isa SamplerReturn ||
+        throw(ErrorException("proposal task returned $(typeof(ret)), expected SamplerReturn"))
+    push!(sampler.proposal_queue, ret)
+    sampler.proposal_queue_loglstar = Float64(loglstar)
+    sampler.proposal_batches_submitted += 1
+    sampler.parallel_stats.proposal_batches_submitted += 1
+    _maybe_warn_cheap_likelihood!(sampler)
+    length(sampler.proposal_async_tasks) < _proposal_async_queue_size(sampler) &&
+        _proposal_async_spawn!(sampler, loglstar)
+    return popfirst!(sampler.proposal_queue)
 end
 
 function _new_point!(sampler::NestedSampler, loglstar::Real)
     ncall_accum = 0
+    if _proposal_async_enabled(sampler)
+        while true
+            ret = _take_proposal_async!(sampler, loglstar)
+            ncall_accum += ret.ncalls
+            sampler.proposal_async_since_update += 1
+            should_update = sampler.proposal_async_since_update >= _proposal_queue_size(sampler)
+            _tune_internal_sampler!(sampler, ret; update=should_update)
+            if should_update
+                sampler.proposal_async_since_update = 0
+                _update_bound_if_needed!(
+                    sampler, loglstar; ncall=sampler.ncall + ncall_accum
+                )
+            end
+            if ret.logl > loglstar
+                return ret, ncall_accum
+            end
+        end
+    end
     if _proposal_queue_enabled(sampler)
         while true
             _fill_proposal_queue!(sampler, loglstar)
@@ -1234,6 +1414,7 @@ function run_nested!(
         end
     end
     add_live && add_live_points!(sampler)
+    _discard_proposal_async!(sampler)
     _recompute_integrals!(sampler)
     if !isnothing(checkpoint_file)
         checkpoint!(sampler, checkpoint_file)
@@ -1296,6 +1477,7 @@ function n_effective(sampler::NestedSampler)
 end
 
 function sampler_snapshot(sampler::NestedSampler)
+    _discard_proposal_async!(sampler)
     return Dict{Symbol, Any}(
         :type => :NestedSampler,
         :ndim => sampler.ndim,
@@ -1341,8 +1523,11 @@ function sampler_snapshot(sampler::NestedSampler)
         :plateau_mode => sampler.plateau_mode,
         :plateau_counter => sampler.plateau_counter,
         :plateau_logdvol => sampler.plateau_logdvol,
+        :cheap_likelihood_hint_issued => sampler.cheap_likelihood_hint_issued,
         :proposal_queue => SamplerReturn[],
         :proposal_queue_loglstar => sampler.proposal_queue_loglstar,
+        :proposal_scheduler => sampler.proposal_scheduler,
+        :proposal_async_since_update => sampler.proposal_async_since_update,
         :proposal_tasks_submitted => sampler.proposal_tasks_submitted,
         :proposal_batches_submitted => sampler.proposal_batches_submitted,
     )
@@ -1395,8 +1580,14 @@ function _restore_nested_sampler(state::AbstractDict, loglikelihood, prior_trans
         Bool(state[:plateau_mode]),
         Int(state[:plateau_counter]),
         Float64(state[:plateau_logdvol]),
+        Bool(get(state, :cheap_likelihood_hint_issued, false)),
         Vector{SamplerReturn}(get(state, :proposal_queue, SamplerReturn[])),
         Float64(get(state, :proposal_queue_loglstar, -Inf)),
+        _proposal_scheduler_symbol(get(state, :proposal_scheduler, :batch)),
+        Task[],
+        ProposalTaskInput[],
+        -Inf,
+        Int(get(state, :proposal_async_since_update, 0)),
         Int(get(state, :proposal_tasks_submitted, 0)),
         Int(get(state, :proposal_batches_submitted, 0)),
     )

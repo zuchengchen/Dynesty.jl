@@ -214,6 +214,16 @@ end
         map_backend=ThreadedMapBackend(queue_size=2),
         queue_size=2,
     )
+    @test_throws ArgumentError NestedSampler(
+        static_loglike_gaussian,
+        static_prior_identity,
+        2;
+        nlive=6,
+        bound=:none,
+        sample=:unif,
+        rng=MersenneTwister(60),
+        proposal_scheduler=:bad,
+    )
 end
 
 @testset "Static sampler pool usage policy" begin
@@ -416,6 +426,73 @@ end
         @test restored.added_live
         @test length(results(restored).logl) == 5 + 3 + restored.nlive
     end
+end
+
+@testset "Static sampler async proposal scheduler" begin
+    function async_queue_run(seed)
+        sampler = NestedSampler(
+            static_loglike_gaussian,
+            static_prior_identity,
+            2;
+            nlive=20,
+            bound=:none,
+            sample=:unif,
+            rng=MersenneTwister(seed),
+            parallel=:threads,
+            queue_size=3,
+            proposal_scheduler=:async,
+        )
+        @test sampler.proposal_scheduler == :async
+        run_nested!(sampler; maxiter=12, dlogz=nothing, add_live=false)
+        res = results(sampler)
+        return (
+            logl=copy(res.logl),
+            samples_u=copy(res.samples_u),
+            logz=copy(res.logz),
+            tasks=sampler.proposal_tasks_submitted,
+            batches=sampler.proposal_batches_submitted,
+            wait=sampler.parallel_stats.proposal_queue_wait_wall_time,
+        )
+    end
+    first = async_queue_run(73)
+    second = async_queue_run(73)
+    @test first.logl == second.logl
+    @test first.samples_u == second.samples_u
+    @test first.logz == second.logz
+    @test first.tasks > 0
+    @test first.batches > 0
+    @test first.wait >= 0.0
+
+    batch_sampler = NestedSampler(
+        static_loglike_gaussian,
+        static_prior_identity,
+        2;
+        nlive=16,
+        bound=:none,
+        sample=:unif,
+        rng=MersenneTwister(74),
+        parallel=:threads,
+        queue_size=3,
+        proposal_scheduler=:batch,
+    )
+    run_nested!(batch_sampler; maxiter=6, dlogz=nothing, add_live=false)
+    @test batch_sampler.parallel_stats.proposal_queue_wait_wall_time == 0.0
+
+    auto_distributed = NestedSampler(
+        static_loglike_gaussian,
+        static_prior_identity,
+        2;
+        nlive=12,
+        bound=:none,
+        sample=:unif,
+        rng=MersenneTwister(75),
+        map_backend=DistributedMapBackend(workers=Int[], queue_size=2),
+        proposal_scheduler=:auto,
+    )
+    run_nested!(auto_distributed; maxiter=3, dlogz=nothing, add_live=false)
+    @test auto_distributed.proposal_scheduler == :auto
+    @test auto_distributed.proposal_tasks_submitted > 0
+    @test auto_distributed.parallel_stats.proposal_queue_wait_wall_time == 0.0
 end
 
 @testset "Static sampler serial/threaded agreement and proposal errors" begin

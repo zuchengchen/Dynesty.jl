@@ -133,6 +133,7 @@ function dynamic_parent_fixture(; rng=MersenneTwister(1234))
         :bound_enlarge => 1.0,
         :map_backend => ThreadedMapBackend(queue_size=2),
         :pool_usage => PoolUsage(proposals=false, stopping=true),
+        :proposal_scheduler => :async,
         :saved_run => dynamic_saved_record(),
         :it => 7,
         :eff => 44.0,
@@ -244,12 +245,15 @@ end
         rng=MersenneTwister(713),
         map_backend=backend,
         use_pool=(propose_point=false, stop_function=true),
+        proposal_scheduler=:async,
     )
     @test sampler.pool_usage.proposals == false
     @test sampler.pool_usage.stopping == true
+    @test sampler.proposal_scheduler == :async
     run_nested!(sampler; maxiter_init=5, dlogz_init=nothing, print_progress=false)
     @test sampler.sampler isa NestedSampler
     @test sampler.sampler.pool_usage == sampler.pool_usage
+    @test sampler.sampler.proposal_scheduler == :async
     @test sampler.sampler.proposal_tasks_submitted == 0
     @test backend.calls == 1
     @test results(sampler).parallel_stats.proposal_tasks_submitted == 0
@@ -262,6 +266,7 @@ end
     )
     @test configured.sampler.pool_usage.proposals == false
     @test configured.sampler.pool_usage.stopping == true
+    @test configured.sampler.proposal_scheduler == :async
 end
 
 @testset "Dynamic sampler blobs and checkpoint restore" begin
@@ -294,10 +299,12 @@ end
         @test restored isa DynamicSampler
         @test restored.internal_state == DynamicSamplerRunDone
         @test restored.pool_usage == sampler.pool_usage
+        @test restored.proposal_scheduler == sampler.proposal_scheduler
         @test restored.parallel_stats.initial_evaluation_tasks ==
             sampler.parallel_stats.initial_evaluation_tasks
         @test restored.sampler isa NestedSampler
         @test restored.sampler.pool_usage == sampler.sampler.pool_usage
+        @test restored.sampler.proposal_scheduler == sampler.sampler.proposal_scheduler
         restored_res = results(restored)
         @test Dynesty.isdynamic(restored_res)
         @test restored_res.logl == res.logl
