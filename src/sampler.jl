@@ -448,12 +448,6 @@ function NestedSampler(
     if bootstrap_i > 0
         if isnothing(bootstrap) && initial_sampler isa UniformBoundSampler
             enlarge_f, bootstrap_i = 1.25, 0
-        else
-            throw(
-                ArgumentError(
-                    "bootstrap > 0 requires the later bootstrap-bound refinement; use bootstrap=0 or enlarge",
-                ),
-            )
         end
     end
     ratio = _get_update_interval_ratio(update_interval, initial_sampler, nlive_i)

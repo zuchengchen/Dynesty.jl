@@ -108,6 +108,27 @@ def main() -> None:
     good, improved_cov, improved_am, improved_axes = bounding.improve_covar_mat(
         np.array([[1.0, 0.999999], [0.999999, 0.999998]])
     )
+    boot_points = np.array(
+        [
+            [0.10, 0.20],
+            [0.80, 0.20],
+            [0.50, 0.90],
+            [0.30, 0.70],
+            [0.65, 0.55],
+            [0.20, 0.35],
+            [0.75, 0.85],
+        ]
+    )
+    boot_in, boot_out = bounding._bootstrap_points(
+        boot_points, np.random.SeedSequence(13579)
+    )
+    boot_single = bounding._ellipsoid_bootstrap_expand(
+        (False, boot_points, np.random.SeedSequence(97531))
+    )
+    boot_multi = bounding._ellipsoid_bootstrap_expand(
+        (True, boot_points, np.random.SeedSequence(97531))
+    )
+    slogdet_input = np.array([[2.0, 0.3], [0.3, 1.5]])
 
     bounding_fixture = {
         "source": fixture["source"],
@@ -133,6 +154,22 @@ def main() -> None:
             "cov": improved_cov.tolist(),
             "am": improved_am.tolist(),
             "axes": improved_axes.tolist(),
+        },
+        "slogdet_checked": {
+            "input": slogdet_input.tolist(),
+            "value": float(bounding._slogdet_checked(slogdet_input)),
+        },
+        "bootstrap_points": {
+            "seed": 13579,
+            "points": boot_points.tolist(),
+            "points_in": boot_in.tolist(),
+            "points_out": boot_out.tolist(),
+        },
+        "ellipsoid_bootstrap_expand": {
+            "seed": 97531,
+            "single": float(boot_single),
+            "multi": float(boot_multi),
+            "note": "Julia uses its own RNG; tests check geometry invariants instead of same-seed equality.",
         },
         "ellipsoid": {
             "ctr": ell.ctr.tolist(),

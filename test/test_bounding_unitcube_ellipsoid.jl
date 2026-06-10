@@ -58,6 +58,11 @@ end
         1e-12
     @test ell.axlens ≈ Vector{Float64}(fixture["ellipsoid"]["scaled_axlens"]) rtol = 1e-10 atol =
         1e-12
+
+    updated = Ellipsoid(2)
+    Dynesty.update!(updated, points; rng=MersenneTwister(11), bootstrap=4)
+    @test updated.logvol >= bounding_ellipsoid(points).logvol - 1e-12
+    @test all(Base.contains(updated, vec(points[i, :])) for i in axes(points, 1))
 end
 
 @testset "Bounding helper functions" begin
@@ -90,6 +95,26 @@ end
     @test axes ≈ matrix_from_json(fixture["improve_covar_mat"]["axes"]) rtol = 1e-8 atol =
         1e-10
     @test_throws ArgumentError bounding_ellipsoid(reshape([0.1, 0.2], 1, 2))
+
+    slog = fixture["slogdet_checked"]
+    @test Dynesty._slogdet_checked(matrix_from_json(slog["input"])) ≈ Float64(slog["value"]) rtol =
+        1e-12 atol = 1e-12
+    @test_throws ArgumentError Dynesty._slogdet_checked([1.0 0.0; 0.0 -1.0])
+
+    boot_points = matrix_from_json(fixture["bootstrap_points"]["points"])
+    points_in, points_out = Dynesty._bootstrap_points(boot_points, MersenneTwister(13579))
+    @test size(points_in, 1) >= 2
+    @test size(points_out, 1) >= 1
+    @test size(points_in, 1) + size(points_out, 1) == size(boot_points, 1)
+
+    expand_single = Dynesty._ellipsoid_bootstrap_expand(
+        false, boot_points; rng=MersenneTwister(97531)
+    )
+    expand_multi = Dynesty._ellipsoid_bootstrap_expand(
+        true, boot_points; rng=MersenneTwister(97531)
+    )
+    @test expand_single >= 1.0
+    @test expand_multi >= 1.0
 end
 
 @testset "MultiEllipsoid basic union" begin
@@ -114,4 +139,9 @@ end
     @test idx == 1
     @test Base.contains(multi, x)
     @test size(samples(multi, 4; rng=MersenneTwister(9))) == (4, 2)
+
+    updated = MultiEllipsoid(2)
+    Dynesty.update!(updated, points; rng=MersenneTwister(12), bootstrap=3)
+    @test updated.logvol >= multi.logvol - 1e-12
+    @test all(Base.contains(updated, vec(points[i, :])) for i in axes(points, 1))
 end

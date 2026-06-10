@@ -20,7 +20,7 @@ Statuses:
 | `dynesty.bounding.MultiEllipsoid` | `MultiEllipsoid` | A | implemented | `test/test_bounding_unitcube_ellipsoid.jl` | `test/reference/python/fixtures/bounding_core.json` | Multi-ellipsoid bound; recursive splitting remains conservative single-ellipsoid in Stage 2. |
 | `dynesty.bounding.RadFriends` | `RadFriends` | A | implemented | `test/test_bounding_friends.jl` | `test/reference/python/fixtures/friends_core.json` | RadFriends bound. |
 | `dynesty.bounding.SupFriends` | `SupFriends` | A | implemented | `test/test_bounding_friends.jl` | `test/reference/python/fixtures/friends_core.json` | SupFriends bound. |
-| `dynesty.bounding._slogdet_checked` | `_slogdet_checked` | B | planned | `test/test_bounding_unitcube_ellipsoid.jl` | planned | Internal determinant guard. |
+| `dynesty.bounding._slogdet_checked` | `_slogdet_checked` | B | implemented | `test/test_bounding_unitcube_ellipsoid.jl` | `test/reference/python/fixtures/bounding_core.json` | Internal determinant guard. |
 | `dynesty.bounding.logvol_prefactor` | `logvol_prefactor` | A | implemented | `test/test_utils.jl` | `test/reference/python/fixtures/bounding_core.json` | Volume helper. |
 | `dynesty.bounding.randsphere` | `randsphere` | B | implemented | `test/test_bounding_unitcube_ellipsoid.jl` | `test/reference/python/fixtures/bounding_core.json` | Statistical checks plus reference fixture metadata. |
 | `dynesty.bounding.rand_choice` | `rand_choice` | B | implemented | `test/test_bounding_unitcube_ellipsoid.jl` | `test/reference/python/fixtures/bounding_core.json` | Weighted random choice; Julia returns 1-based indices. |
@@ -28,8 +28,8 @@ Statuses:
 | `dynesty.bounding.bounding_ellipsoid` | `bounding_ellipsoid` | A | implemented | `test/test_bounding_unitcube_ellipsoid.jl` | `test/reference/python/fixtures/bounding_core.json` | Deterministic fixture and tolerance checks. |
 | `dynesty.bounding._bounding_ellipsoids` | `_bounding_ellipsoids` | B | planned | `test/test_bounding_unitcube_ellipsoid.jl` | planned | Recursive clustering split helper remains for full multi-ellipsoid refinement. |
 | `dynesty.bounding.bounding_ellipsoids` | `bounding_ellipsoids` | A | implemented | `test/test_bounding_unitcube_ellipsoid.jl` | `test/reference/python/fixtures/bounding_core.json` | Public multi-bound constructor; Stage 2 covers single-ellipsoid union. |
-| `dynesty.bounding._bootstrap_points` | `_bootstrap_points` | B | planned | `test/test_bounding_unitcube_ellipsoid.jl` | planned | Internal bootstrap helper. |
-| `dynesty.bounding._ellipsoid_bootstrap_expand` | `_ellipsoid_bootstrap_expand` | B | planned | `test/test_bounding_unitcube_ellipsoid.jl` | planned | Internal bootstrap expansion. |
+| `dynesty.bounding._bootstrap_points` | `_bootstrap_points` | B | implemented | `test/test_bounding_unitcube_ellipsoid.jl` | `test/reference/python/fixtures/bounding_core.json` | Internal bootstrap helper; Julia RNG path checked by invariants. |
+| `dynesty.bounding._ellipsoid_bootstrap_expand` | `_ellipsoid_bootstrap_expand` | B | implemented | `test/test_bounding_unitcube_ellipsoid.jl` | `test/reference/python/fixtures/bounding_core.json` | Internal bootstrap expansion for single and multi ellipsoid bounds. |
 | `dynesty.bounding._friends_bootstrap_radius` | `_friends_bootstrap_radius` | B | implemented | `test/test_bounding_friends.jl` | `test/reference/python/fixtures/friends_core.json` | Friends radius helper; random bootstrap checked by invariants. |
 | `dynesty.bounding._friends_leaveoneout_radius` | `_friends_leaveoneout_radius` | B | implemented | `test/test_bounding_friends.jl` | `test/reference/python/fixtures/friends_core.json` | Leave-one-out radius helper. |
 | `dynesty.dynamicsampler.DynamicSamplerStatesEnum` | `DynamicSamplerState` | B | implemented | `test/test_dynamic_sampler.jl` | `test/reference/python/fixtures/dynamic_core.json` | Julia enum replacement with matching state numeric values. |
@@ -40,7 +40,7 @@ Statuses:
 | `dynesty.dynamicsampler.DynamicSampler` | `DynamicSampler` | A | planned | `test/test_dynamic_sampler.jl` | planned | Dynamic sampler engine. |
 | `dynesty.dynesty._get_citations` | `get_citations` | C | implemented | `test/runtests.jl` | not needed | Julia helper includes required citation set. |
 | `dynesty.dynesty._get_internal_sampler` | `_get_internal_sampler` | B | implemented | `test/test_static_sampler.jl` | not needed | Sampler factory; accepts Julia `Symbol`s and Python strings with 1-based dimension indices. |
-| `dynesty.dynesty._get_enlarge_bootstrap` | `_get_enlarge_bootstrap` | B | implemented | `test/test_static_sampler.jl` | not needed | Bound defaults; automatic uniform-bootstrap default is represented by deterministic enlargement until ellipsoid bootstrap helpers are migrated. |
+| `dynesty.dynesty._get_enlarge_bootstrap` | `_get_enlarge_bootstrap` | B | implemented | `test/test_static_sampler.jl` | not needed | Bound defaults; explicit ellipsoid bootstrap is supported, while automatic uniform-bound bootstrap still maps to deterministic enlargement. |
 | `dynesty.dynesty._check_first_update` | `_check_first_update` | B | implemented | `test/test_static_sampler.jl` | not needed | First-update validation. |
 | `dynesty.dynesty._get_update_interval_ratio` | `_get_update_interval_ratio` | B | implemented | `test/test_static_sampler.jl` | not needed | Bound update heuristic. |
 | `dynesty.dynesty._assemble_sampler_docstring` | documentation generation | C | replacement | docs build | not needed | Julia docs will be written directly. |

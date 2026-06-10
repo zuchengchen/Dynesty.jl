@@ -1,5 +1,70 @@
 {
   "atol": 1e-12,
+  "bootstrap_points": {
+    "points": [
+      [
+        0.1,
+        0.2
+      ],
+      [
+        0.8,
+        0.2
+      ],
+      [
+        0.5,
+        0.9
+      ],
+      [
+        0.3,
+        0.7
+      ],
+      [
+        0.65,
+        0.55
+      ],
+      [
+        0.2,
+        0.35
+      ],
+      [
+        0.75,
+        0.85
+      ]
+    ],
+    "points_in": [
+      [
+        0.8,
+        0.2
+      ],
+      [
+        0.5,
+        0.9
+      ],
+      [
+        0.65,
+        0.55
+      ],
+      [
+        0.2,
+        0.35
+      ],
+      [
+        0.75,
+        0.85
+      ]
+    ],
+    "points_out": [
+      [
+        0.1,
+        0.2
+      ],
+      [
+        0.3,
+        0.7
+      ]
+    ],
+    "seed": 13579
+  },
   "ellipsoid": {
     "am": [
       [
@@ -79,6 +144,12 @@
       ]
     ],
     "scaled_logvol": 0.21620474025851077
+  },
+  "ellipsoid_bootstrap_expand": {
+    "multi": 2.64747860159986,
+    "note": "Julia uses its own RNG; tests check geometry invariants instead of same-seed equality.",
+    "seed": 97531,
+    "single": 2.64747860159986
   },
   "improve_covar_mat": {
     "am": [
@@ -197,11 +268,24 @@
     ]
   },
   "rtol": 1e-10,
+  "slogdet_checked": {
+    "input": [
+      [
+        2.0,
+        0.3
+      ],
+      [
+        0.3,
+        1.5
+      ]
+    ],
+    "value": 1.0681530811834012
+  },
   "source": {
     "branch": "master",
     "commit": "3ec158de0d2bf12a56230faacd0c987b3d55d550",
     "dynesty_version": "2.1.2",
-    "generated_at": "2026-06-09T19:32:11.840153+00:00",
+    "generated_at": "2026-06-10T04:01:16.137327+00:00",
     "numpy_version": "1.21.5",
     "path": "/home/czc/projects/working/dynesty",
     "python_version": "3.9.18",

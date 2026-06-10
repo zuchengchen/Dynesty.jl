@@ -22,6 +22,7 @@ static_loglike_gaussian(v) = -0.5 * sum(((v .- 0.5) ./ 0.12) .^ 2)
     @test_throws ArgumentError Dynesty._get_internal_sampler(
         :rwalk, 2, 2; periodic=[1], reflective=[1]
     )
+    @test Dynesty._get_enlarge_bootstrap(UnitCubeSampler(; ndim=2), nothing, 4) == (1.0, 4)
 
     live, logvol_init, ncalls = Dynesty._initialize_live_points(
         nothing,
@@ -115,6 +116,26 @@ end
         @test restored.added_live
         @test length(results(restored).logl) == 12 + 3 + restored.nlive
     end
+end
+
+@testset "Static sampler ellipsoid bootstrap update" begin
+    sampler = NestedSampler(
+        static_loglike_gaussian,
+        static_prior_identity,
+        2;
+        nlive=30,
+        bound=:single,
+        sample=:rwalk,
+        walks=4,
+        first_update=Dict(:min_ncall => 30, :min_eff => 100.0),
+        bootstrap=3,
+        rng=MersenneTwister(36),
+    )
+    run_nested!(sampler; maxiter=6, dlogz=nothing, add_live=false)
+    @test sampler.bound isa Ellipsoid
+    @test sampler.bound_bootstrap == 3
+    @test sampler.nbound >= 1
+    @test all(isfinite, results(sampler).logz)
 end
 
 @testset "Static sampler periodic and reflective dimensions" begin

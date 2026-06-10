@@ -516,11 +516,6 @@ function update!(
     bootstrap::Integer=0,
     mc_integrate::Bool=false,
 )
-    bootstrap == 0 || throw(
-        ArgumentError(
-            "ellipsoid bootstrap expansion is implemented in a later Stage 2 refinement"
-        ),
-    )
     new_ell = bounding_ellipsoid(points)
     ell.ndim = new_ell.ndim
     ell.ctr = new_ell.ctr
@@ -529,6 +524,14 @@ function update!(
     ell.axes = new_ell.axes
     ell.axlens = new_ell.axlens
     ell.logvol = new_ell.logvol
+    if bootstrap > 0
+        expand = maximum(
+            _ellipsoid_bootstrap_expand(false, points; rng) for _ in 1:Int(bootstrap)
+        )
+        if expand > 1.0
+            scale_to_logvol!(ell, ell.logvol + ell.ndim * log(expand))
+        end
+    end
     ell.funit = mc_integrate ? unitcube_overlap(ell; rng) : ell.funit
     return ell
 end
@@ -673,11 +676,6 @@ function update!(
     bootstrap::Integer=0,
     mc_integrate::Bool=false,
 )
-    bootstrap == 0 || throw(
-        ArgumentError(
-            "multi-ellipsoid bootstrap expansion is implemented in a later Stage 2 refinement",
-        ),
-    )
     new_multi = bounding_ellipsoids(points)
     multi.ndim = new_multi.ndim
     multi.ells = new_multi.ells
@@ -687,6 +685,14 @@ function update!(
     multi.ams = new_multi.ams
     multi.logvol_ells = new_multi.logvol_ells
     multi.logvol = new_multi.logvol
+    if bootstrap > 0
+        expand = maximum(
+            _ellipsoid_bootstrap_expand(true, points; rng) for _ in 1:Int(bootstrap)
+        )
+        if expand > 1.0
+            scale_to_logvol!(multi, multi.logvol + multi.ndim * log(expand))
+        end
+    end
     multi.funit = if mc_integrate
         monte_carlo_logvol(multi; rng, return_overlap=true)[2]
     else
@@ -923,6 +929,23 @@ function _friends_bootstrap_radius(
     points_in, points_out = _bootstrap_points(points, rng)
     dists = _nearest_distances(points_out, points_in, ftype)
     return maximum(dists)
+end
+
+function _ellipsoid_bootstrap_expand(
+    multi::Bool, points::AbstractMatrix{<:Real}; rng::AbstractRNG=Random.default_rng()
+)
+    points_in, points_out = _bootstrap_points(points, rng)
+    ell = bounding_ellipsoid(points_in)
+    dists = if multi
+        ells = _bounding_ellipsoids(points_in, ell)
+        [
+            minimum(distance(el, vec(points_out[i, :])) for el in ells) for
+            i in axes(points_out, 1)
+        ]
+    else
+        distance_many(ell, points_out)
+    end
+    return max(1.0, maximum(dists))
 end
 
 function _friends_leaveoneout_radius(points::AbstractMatrix{<:Real}, ftype::Symbol)
