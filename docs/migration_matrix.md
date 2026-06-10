@@ -36,7 +36,7 @@ Statuses:
 | `dynesty.dynamicsampler.compute_weights` | `compute_weights` | A | implemented | `test/test_dynamic_sampler.jl` | `test/reference/python/fixtures/dynamic_core.json` | Dynamic evidence/posterior weighting. |
 | `dynesty.dynamicsampler.weight_function` | `weight_function` | A | implemented | `test/test_dynamic_sampler.jl` | `test/reference/python/fixtures/dynamic_core.json` | Dynamic batch-bound weighting heuristic. |
 | `dynesty.dynamicsampler.stopping_function` | `stopping_function` | A | implemented | `test/test_dynamic_sampler.jl` | `test/reference/python/fixtures/dynamic_core.json` | Default stopping criteria; deterministic fixture covers `n_mc=0`, Monte Carlo branch is checked by Julia invariants later. |
-| `dynesty.dynamicsampler._configure_batch_sampler` | `_configure_batch_sampler` | B | planned | `test/test_dynamic_sampler.jl` | planned | Internal dynamic configuration. |
+| `dynesty.dynamicsampler._configure_batch_sampler` | `_configure_batch_sampler` / `ConfiguredBatchSampler` | B | implemented | `test/test_dynamic_sampler.jl` | not needed | Internal dynamic batch configuration with fresh-prior and saved-sample branches; Julia returns a typed metadata wrapper around `NestedSampler`. |
 | `dynesty.dynamicsampler.DynamicSampler` | `DynamicSampler` | A | planned | `test/test_dynamic_sampler.jl` | planned | Dynamic sampler engine. |
 | `dynesty.dynesty._get_citations` | `get_citations` | C | implemented | `test/runtests.jl` | not needed | Julia helper includes required citation set. |
 | `dynesty.dynesty._get_internal_sampler` | `_get_internal_sampler` | B | implemented | `test/test_static_sampler.jl` | not needed | Sampler factory; accepts Julia `Symbol`s and Python strings with 1-based dimension indices. |
