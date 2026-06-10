@@ -283,24 +283,28 @@ function parse_elapsed_seconds(text::AbstractString)
     end
 end
 
+function time_value_after_label(line::AbstractString)
+    idx = findlast(==(':'), line)
+    isnothing(idx) && return ""
+    return strip(line[nextind(line, idx):end])
+end
+
 function parse_time_v(stderr_text::String)
     metrics = Dict{String, Any}()
     for line in split(stderr_text, '\n')
         if occursin("User time (seconds):", line)
-            metrics["user_cpu_seconds"] = parse(Float64, strip(split(line, ":", limit=2)[2]))
+            metrics["user_cpu_seconds"] = parse(Float64, time_value_after_label(line))
         elseif occursin("System time (seconds):", line)
-            metrics["system_cpu_seconds"] =
-                parse(Float64, strip(split(line, ":", limit=2)[2]))
+            metrics["system_cpu_seconds"] = parse(Float64, time_value_after_label(line))
         elseif occursin("Percent of CPU this job got:", line)
-            raw = strip(split(line, ":", limit=2)[2])
+            raw = time_value_after_label(line)
             metrics["time_percent_cpu"] = raw
             value = replace(raw, "%" => "")
             metrics["time_percent_cpu_numeric"] = tryparse(Float64, value)
         elseif occursin("Elapsed (wall clock) time", line)
-            metrics["wall_time_seconds"] =
-                parse_elapsed_seconds(strip(split(line, ":", limit=2)[2]))
+            metrics["wall_time_seconds"] = parse_elapsed_seconds(time_value_after_label(line))
         elseif occursin("Maximum resident set size (kbytes):", line)
-            metrics["time_max_rss_kb"] = parse(Int, strip(split(line, ":", limit=2)[2]))
+            metrics["time_max_rss_kb"] = parse(Int, time_value_after_label(line))
         end
     end
     if haskey(metrics, "user_cpu_seconds") && haskey(metrics, "system_cpu_seconds")
@@ -470,6 +474,10 @@ function run_monitored!(
         total = time_metrics["user_cpu_seconds"] + time_metrics["system_cpu_seconds"]
         time_metrics["total_cpu_seconds"] = total
         wall = get(time_metrics, "wall_time_seconds", measured_wall)
+        if isnothing(wall) || !(wall isa Real) || wall <= 0
+            wall = measured_wall
+            time_metrics["wall_time_seconds"] = wall
+        end
         time_metrics["cpu_utilization"] = wall > 0 ? total / wall : nothing
     end
     payload = Dict{String, Any}(
@@ -630,6 +638,60 @@ function row_from_run(
         "monitor_metadata_file" => joinpath(run_dir, "monitor_metadata.json"),
         "command" => join(get(monitor, "command", String[]), " "),
     )
+end
+
+function expected_run_shape(cfg::RunConfig, cost::String, implementation::String, repeat::Int)
+    return Dict{String, Any}(
+        "mode" => cfg.mode,
+        "cost" => cost,
+        "implementation" => implementation,
+        "repeat" => repeat,
+        "work_size" => work_size_for(cost, cfg),
+        "queue_size" => cfg.queue_size,
+        "threads" => cfg.threads,
+        "nproc" => cfg.nproc,
+        "nlive" => cfg.mode == "smoke" ? cfg.smoke_nlive : cfg.nlive,
+        "dlogz" => cfg.mode == "smoke" ? cfg.smoke_dlogz : cfg.dlogz,
+    )
+end
+
+function _same_number(left, right)
+    isnothing(left) && return false
+    parsed = tryparse(Float64, string(left))
+    isnothing(parsed) && return false
+    return isapprox(parsed, Float64(right); atol=1.0e-12, rtol=1.0e-12)
+end
+
+function reusable_existing_run(
+    cfg::RunConfig,
+    cost::String,
+    implementation::String,
+    repeat::Int,
+    run_dir::String,
+    monitor::Dict{String, Any},
+)
+    get(monitor, "success", false) == true || return false
+    cfg.mode == "formal" && get(monitor, "used_usr_bin_time", false) != true && return false
+    cfg.mode == "formal" && get(monitor, "time_unavailable", true) == true && return false
+    config_path = joinpath(run_dir, "run_config.json")
+    isfile(config_path) || return false
+    run_cfg = read_json_dict(config_path)
+    expected = expected_run_shape(cfg, cost, implementation, repeat)
+    for key in ("mode", "cost", "implementation", "repeat", "work_size", "queue_size")
+        get(run_cfg, key, nothing) == expected[key] || return false
+    end
+    if implementation == "julia"
+        get(run_cfg, "threads", nothing) == cfg.threads || return false
+    else
+        get(run_cfg, "nproc", nothing) == cfg.nproc || return false
+    end
+    paths = metadata_paths(run_dir, implementation)
+    meta = read_json_dict(paths.metadata)
+    get(meta, "nlive", nothing) == expected["nlive"] || return false
+    _same_number(get(meta, "dlogz", nothing), expected["dlogz"]) || return false
+    get(meta, "work_size", nothing) == expected["work_size"] || return false
+    isfile(paths.samples) || return false
+    return true
 end
 
 function median_or_nothing(values)
@@ -797,24 +859,20 @@ function run_one!(cfg::RunConfig, cost::String, implementation::String, repeat::
     monitor_path = joinpath(run_dir, "monitor_metadata.json")
     if cfg.resume && isfile(monitor_path)
         monitor = read_json_dict(monitor_path)
-        if get(monitor, "success", false) == true
+        if reusable_existing_run(cfg, cost, implementation, repeat, run_dir, monitor)
             @info "Skipping existing successful run" id
             return row_from_run(cfg, cost, implementation, repeat, run_dir, monitor)
+        else
+            @info "Existing run is not reusable for requested benchmark; rerunning" id
         end
     end
     mkpath(run_dir)
     cmd = command_for(cfg, cost, implementation, repeat, run_dir)
+    expected = expected_run_shape(cfg, cost, implementation, repeat)
     write_json(
         joinpath(run_dir, "run_config.json"),
         Dict{String, Any}(
-            "mode" => cfg.mode,
-            "cost" => cost,
-            "implementation" => implementation,
-            "repeat" => repeat,
-            "work_size" => work_size_for(cost, cfg),
-            "queue_size" => cfg.queue_size,
-            "threads" => cfg.threads,
-            "nproc" => cfg.nproc,
+            expected...,
             "command" => cmd,
             "python_dynesty_path" => PYTHON_DYNESTY_PATH,
             "comparison_label" => "Julia $(cfg.threads) threads vs Python $(cfg.nproc) multiprocessing worker processes",
