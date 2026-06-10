@@ -900,6 +900,16 @@ function _dynamic_adaptive_requested(kwargs)
     return false
 end
 
+function _dynamic_kwargs_dict(args)
+    isnothing(args) && return Dict{Symbol, Any}()
+    if args isa AbstractDict
+        return Dict{Symbol, Any}(Symbol(key) => value for (key, value) in pairs(args))
+    end
+    return Dict{Symbol, Any}(
+        Symbol(key) => getproperty(args, key) for key in propertynames(args)
+    )
+end
+
 function _dynamic_effective_limit(init_limit, global_limit)
     if isnothing(init_limit)
         return global_limit
@@ -908,6 +918,252 @@ function _dynamic_effective_limit(init_limit, global_limit)
     else
         return min(Int(init_limit), Int(global_limit))
     end
+end
+
+_dynamic_limit_value(limit) = isnothing(limit) ? typemax(Int) : Int(limit)
+
+function _dynamic_remaining_limit(global_limit::Int, current::Int)
+    global_limit == typemax(Int) && return typemax(Int)
+    return max(global_limit - current, 0)
+end
+
+function _dynamic_new_run_from_batch(
+    configured::ConfiguredBatchSampler,
+    batch_id::Integer,
+    id_offset::Integer,
+    it_offset::Integer,
+)
+    batch_sampler = configured.sampler
+    record = batch_sampler.saved_run
+    start = configured.join_index + 1
+    stop = length(record[:logl])
+    new_run = RunRecord(; dynamic=true)
+    if start > stop
+        push!(new_run[:batch_nlive], configured.niter)
+        push!(new_run[:batch_logl_bounds], (configured.logl_min, configured.logl_max))
+        return new_run
+    end
+
+    nrows = stop - start + 1
+    ndead = max(batch_sampler.it - 1, 0)
+    samples_n = if ndead + batch_sampler.nlive == nrows
+        vcat(fill(batch_sampler.nlive, ndead), collect(batch_sampler.nlive:-1:1))
+    else
+        Int.(record[:n][start:stop])
+    end
+
+    for (j, row) in enumerate(start:stop)
+        for key in RUN_RECORD_KEYS
+            value = if key === :id
+                Int(record[key][row]) + Int(id_offset)
+            elseif key === :n
+                Int(samples_n[j])
+            elseif key === :it
+                Int(record[key][row]) + Int(it_offset)
+            else
+                record[key][row]
+            end
+            push!(new_run[key], value)
+        end
+        push!(new_run[:batch], Int(batch_id))
+    end
+    push!(new_run[:batch_nlive], configured.niter)
+    push!(new_run[:batch_logl_bounds], (configured.logl_min, configured.logl_max))
+    return new_run
+end
+
+function combine_runs!(sampler::DynamicSampler)
+    isnothing(sampler.new_run) && throw(ArgumentError("no new dynamic batch is saved"))
+    isempty(sampler.new_run[:id]) && throw(ArgumentError("no new samples are saved"))
+
+    saved = sampler.saved_run
+    new = sampler.new_run
+    nsaved = length(saved[:logl])
+    nnew = length(new[:logl])
+    old_batch_nlive = copy(saved[:batch_nlive])
+    old_batch_logl_bounds = copy(saved[:batch_logl_bounds])
+    combined = RunRecord(; dynamic=true)
+
+    saved_idx = 1
+    new_idx = 1
+    for _ in 1:(nsaved + nnew)
+        saved_logl = saved_idx <= nsaved ? Float64(saved[:logl][saved_idx]) : Inf
+        saved_nlive = saved_idx <= nsaved ? Int(saved[:n][saved_idx]) : 0
+        new_logl = new_idx <= nnew ? Float64(new[:logl][new_idx]) : Inf
+        new_nlive = new_idx <= nnew ? Int(new[:n][new_idx]) : 0
+        nlive = saved_logl > sampler.new_logl_min ? saved_nlive + new_nlive : saved_nlive
+
+        source, row = if saved_logl <= new_logl
+            current = saved_idx
+            saved_idx += 1
+            saved, current
+        else
+            current = new_idx
+            new_idx += 1
+            new, current
+        end
+
+        for key in RUN_RECORD_KEYS
+            if key in (:logvol, :logwt, :logz, :logzvar, :h)
+                continue
+            elseif key === :n
+                push!(combined[key], nlive)
+            else
+                push!(combined[key], source[key][row])
+            end
+        end
+        push!(combined[:batch], source[:batch][row])
+    end
+
+    logl = Float64.(combined[:logl])
+    nlive_array = Int.(combined[:n])
+    logvol = Vector{Float64}(undef, length(logl))
+    cur_logvol = if !isnothing(sampler.sampler)
+        Float64(sampler.sampler.logvol_init)
+    else
+        0.0
+    end
+    plateau_mode = false
+    plateau_counter = 0
+    plateau_logdvol = 0.0
+    for i in eachindex(logl)
+        curl = logl[i]
+        nlive = nlive_array[i]
+        if !plateau_mode && i != lastindex(logl)
+            nplateau = count(==(curl), @view logl[i:end])
+            if nplateau > 1
+                plateau_counter = nplateau
+                plateau_logdvol = cur_logvol + log(1.0 / (nlive + 1))
+                plateau_mode = true
+            end
+        end
+        if !plateau_mode
+            cur_logvol -= log((nlive + 1.0) / nlive)
+        else
+            cur_logvol += log1p(-exp(plateau_logdvol - cur_logvol))
+        end
+        logvol[i] = cur_logvol
+        if plateau_mode
+            plateau_counter -= 1
+            plateau_counter == 0 && (plateau_mode = false)
+        end
+    end
+    ints = compute_integrals(; logl, logvol)
+    combined[:logvol] = Any[logvol...]
+    combined[:logwt] = Any[ints.logwt...]
+    combined[:logz] = Any[ints.logz...]
+    combined[:logzvar] = Any[ints.logzvar...]
+    combined[:h] = Any[ints.h...]
+    combined[:batch_nlive] = Any[old_batch_nlive..., maximum(Int.(new[:n]))]
+    combined[:batch_logl_bounds] = Any[
+        old_batch_logl_bounds..., (sampler.new_logl_min, sampler.new_logl_max)
+    ]
+
+    sampler.saved_run = combined
+    sampler.new_run = nothing
+    sampler.new_logl_min = -Inf
+    sampler.new_logl_max = Inf
+    sampler.batch += 1
+    sampler.it = length(sampler.saved_run[:logl]) + 1
+    sampler.eff = 100.0 * max(sampler.it - 1, 0) / max(sampler.ncall, 1)
+    return sampler
+end
+
+function add_batch!(
+    sampler::DynamicSampler;
+    nlive=nothing,
+    nlive_new=nothing,
+    update_interval=nothing,
+    dlogz=0.01,
+    mode=:weight,
+    wt_function=nothing,
+    wt_kwargs=nothing,
+    logl_bounds=nothing,
+    maxiter=nothing,
+    maxcall=nothing,
+    save_bounds::Bool=true,
+    print_progress::Bool=false,
+    print_func=nothing,
+    resume::Bool=false,
+    checkpoint_file=nothing,
+    checkpoint_every=nothing,
+    stop_val=nothing,
+)
+    resume && throw(ArgumentError("resume is not implemented for DynamicSampler batches"))
+    isempty(sampler.saved_run[:logl]) && throw(
+        ArgumentError("run an initial dynamic sampler baseline before adding batches")
+    )
+    _ = checkpoint_file
+    _ = checkpoint_every
+    _ = stop_val
+
+    nlive_i = if !isnothing(nlive_new)
+        Int(nlive_new)
+    elseif !isnothing(nlive)
+        Int(nlive)
+    else
+        sampler.nlive0
+    end
+    nlive_i > 1 || throw(ArgumentError("nlive for a dynamic batch must be greater than 1"))
+    update_interval_i = _dynamic_update_interval(sampler, update_interval, nlive_i)
+    maxiter_i = _dynamic_limit_value(maxiter)
+    maxcall_i = _dynamic_limit_value(maxcall)
+
+    mode_sym = Symbol(mode)
+    bounds = if mode_sym in (:auto, :weight)
+        isnothing(logl_bounds) ||
+            throw(ArgumentError("logl_bounds may only be supplied with mode=:manual"))
+        wt = isnothing(wt_function) ? weight_function : wt_function
+        wt(sampler |> results, wt_kwargs)
+    elseif mode_sym === :full
+        isnothing(logl_bounds) ||
+            throw(ArgumentError("logl_bounds may only be supplied with mode=:manual"))
+        (-Inf, Inf)
+    elseif mode_sym === :manual
+        isnothing(logl_bounds) &&
+            throw(ArgumentError("mode=:manual requires explicit logl_bounds"))
+        logl_bounds
+    else
+        throw(ArgumentError("mode must be :auto, :weight, :full, or :manual"))
+    end
+
+    configured = _configure_batch_sampler(
+        sampler, nlive_i, update_interval_i; logl_bounds=bounds, save_bounds
+    )
+    sampler.batch_sampler = configured.sampler
+    sampler.bound_list = configured.sampler.bound_list
+    sampler.new_logl_min = configured.logl_min
+    sampler.new_logl_max = configured.logl_max
+    sampler.new_run = RunRecord(; dynamic=true)
+    sampler.ncall += configured.ncall
+    it_offset = sampler.it
+    maxiter_left =
+        maxiter_i == typemax(Int) ? typemax(Int) : max(maxiter_i - configured.niter, 0)
+    maxcall_left =
+        maxcall_i == typemax(Int) ? typemax(Int) : max(maxcall_i - configured.ncall, 0)
+
+    sampler.internal_state = DynamicSamplerInBatch
+    run_nested!(
+        configured.sampler;
+        maxiter=maxiter_left,
+        maxcall=maxcall_left,
+        dlogz,
+        logl_max=configured.logl_max,
+        add_live=true,
+        save_bounds,
+        print_progress,
+        print_func,
+    )
+    sampler.internal_state = DynamicSamplerInBatchAddLive
+    sampler.ncall += configured.sampler.ncall
+    id_offset = isempty(sampler.saved_run[:id]) ? 0 : maximum(Int.(sampler.saved_run[:id]))
+    sampler.new_run = _dynamic_new_run_from_batch(
+        configured, sampler.batch + 1, id_offset, it_offset
+    )
+    combine_runs!(sampler)
+    sampler.internal_state = DynamicSamplerBatchDone
+    sampler.batch_sampler = nothing
+    return sampler
 end
 
 function run_nested!(
@@ -955,20 +1211,23 @@ function run_nested!(
         stop_kwargs,
         use_stop,
     )
-    if _dynamic_adaptive_requested(adaptive_kwargs)
-        throw(
+    if resume && sampler.internal_state != DynamicSamplerInit
+        throw(ArgumentError("resume is not implemented for DynamicSampler runs"))
+    elseif !resume && sampler.internal_state != DynamicSamplerInit
+        sampler.internal_state == DynamicSamplerRunDone || throw(
             ArgumentError(
-                "adaptive dynamic batches are not implemented by run_nested! yet; use the baseline dynamic run API or _configure_batch_sampler",
+                "run_nested! can start only from DynamicSamplerInit or an already completed run",
             ),
         )
     end
-    if resume && sampler.internal_state != DynamicSamplerInit
-        throw(ArgumentError("resume is not implemented for DynamicSampler baseline runs"))
-    elseif !resume && sampler.internal_state != DynamicSamplerInit
-        sampler.internal_state == DynamicSamplerRunDone && return sampler
+    if sampler.internal_state == DynamicSamplerRunDone &&
+        !_dynamic_adaptive_requested(adaptive_kwargs)
+        return sampler
+    elseif sampler.internal_state == DynamicSamplerRunDone &&
+        isempty(sampler.saved_run[:logl])
         throw(
             ArgumentError(
-                "run_nested! can start only from DynamicSamplerInit or an already completed run",
+                "cannot add dynamic batches before an initial baseline run exists"
             ),
         )
     end
@@ -985,82 +1244,126 @@ function run_nested!(
     maxiter_i = _dynamic_effective_limit(maxiter_init, maxiter)
     maxcall_i = _dynamic_effective_limit(maxcall_init, maxcall)
 
-    static_sampler = NestedSampler(
-        sampler.loglikelihood,
-        sampler.prior_transform,
-        sampler.ndim;
-        nlive=nlive_i,
-        bound=sampler.bounding,
-        sample=sampler.sampling,
-        periodic=sampler.periodic,
-        reflective=sampler.reflective,
-        update_interval=update_interval_i,
-        first_update=first_update_d,
-        rng=sampler.rng,
-        live_points,
-        enlarge=sampler.bound_enlarge,
-        bootstrap=sampler.bound_bootstrap,
-        walks=sampler.walks,
-        facc=sampler.facc,
-        slices=sampler.slices,
-        ncdim=sampler.ncdim,
-        blob=sampler.blob,
-        copy_inputs=sampler.copy_inputs,
-    )
-    sampler.sampler = static_sampler
-    sampler.nlive_init = static_sampler.nlive
-    sampler.live_init = _dynamic_live_snapshot(static_sampler)
-    sampler.live_u = copy(static_sampler.live_u)
-    sampler.live_v = copy(static_sampler.live_v)
-    sampler.live_logl = copy(static_sampler.live_logl)
-    sampler.live_blobs = static_sampler.blob ? copy(static_sampler.live_blobs) : nothing
-    sampler.live_bound = copy(static_sampler.live_bound)
-    sampler.live_it = copy(static_sampler.live_it)
-    sampler.ncall = static_sampler.ncall
-    sampler.bound_list = static_sampler.bound_list
-    sampler.internal_state = DynamicSamplerLivePointsInit
+    if sampler.internal_state == DynamicSamplerInit
+        static_sampler = NestedSampler(
+            sampler.loglikelihood,
+            sampler.prior_transform,
+            sampler.ndim;
+            nlive=nlive_i,
+            bound=sampler.bounding,
+            sample=sampler.sampling,
+            periodic=sampler.periodic,
+            reflective=sampler.reflective,
+            update_interval=update_interval_i,
+            first_update=first_update_d,
+            rng=sampler.rng,
+            live_points,
+            enlarge=sampler.bound_enlarge,
+            bootstrap=sampler.bound_bootstrap,
+            walks=sampler.walks,
+            facc=sampler.facc,
+            slices=sampler.slices,
+            ncdim=sampler.ncdim,
+            blob=sampler.blob,
+            copy_inputs=sampler.copy_inputs,
+        )
+        sampler.sampler = static_sampler
+        sampler.nlive_init = static_sampler.nlive
+        sampler.live_init = _dynamic_live_snapshot(static_sampler)
+        sampler.live_u = copy(static_sampler.live_u)
+        sampler.live_v = copy(static_sampler.live_v)
+        sampler.live_logl = copy(static_sampler.live_logl)
+        sampler.live_blobs = static_sampler.blob ? copy(static_sampler.live_blobs) : nothing
+        sampler.live_bound = copy(static_sampler.live_bound)
+        sampler.live_it = copy(static_sampler.live_it)
+        sampler.ncall = static_sampler.ncall
+        sampler.bound_list = static_sampler.bound_list
+        sampler.internal_state = DynamicSamplerLivePointsInit
 
-    sampler.internal_state = DynamicSamplerInBase
-    run_nested!(
-        static_sampler;
-        maxiter=maxiter_i,
-        maxcall=maxcall_i,
-        dlogz=dlogz_init,
-        logl_max=logl_max_init,
-        add_live,
-        save_bounds,
-        print_progress,
-        print_func,
-    )
-    add_live && (sampler.internal_state = DynamicSamplerInBaseAddLive)
+        sampler.internal_state = DynamicSamplerInBase
+        run_nested!(
+            static_sampler;
+            maxiter=maxiter_i,
+            maxcall=maxcall_i,
+            dlogz=dlogz_init,
+            logl_max=logl_max_init,
+            add_live,
+            save_bounds,
+            print_progress,
+            print_func,
+        )
+        add_live && (sampler.internal_state = DynamicSamplerInBaseAddLive)
 
-    static_results = results(static_sampler)
-    samples_n = _static_samples_n(static_results)
-    sampler.base_run = _dynamic_run_from_nested(
-        static_sampler,
-        samples_n;
-        batch_id=0,
-        batch_nlive=static_sampler.nlive,
-        batch_logl_bounds=(-Inf, Inf),
-    )
-    sampler.saved_run = _dynamic_run_from_nested(
-        static_sampler,
-        samples_n;
-        batch_id=0,
-        batch_nlive=static_sampler.nlive,
-        batch_logl_bounds=(-Inf, Inf),
-    )
-    sampler.batch = 0
-    sampler.it = length(sampler.saved_run[:logl]) + 1
-    sampler.ncall = static_sampler.ncall
-    sampler.eff = static_sampler.eff
-    sampler.bound_list = static_sampler.bound_list
-    sampler.live_u = copy(static_sampler.live_u)
-    sampler.live_v = copy(static_sampler.live_v)
-    sampler.live_logl = copy(static_sampler.live_logl)
-    sampler.live_blobs = static_sampler.blob ? copy(static_sampler.live_blobs) : nothing
-    sampler.live_bound = copy(static_sampler.live_bound)
-    sampler.live_it = copy(static_sampler.live_it)
+        static_results = results(static_sampler)
+        samples_n = _static_samples_n(static_results)
+        sampler.base_run = _dynamic_run_from_nested(
+            static_sampler,
+            samples_n;
+            batch_id=0,
+            batch_nlive=static_sampler.nlive,
+            batch_logl_bounds=(-Inf, Inf),
+        )
+        sampler.saved_run = _dynamic_run_from_nested(
+            static_sampler,
+            samples_n;
+            batch_id=0,
+            batch_nlive=static_sampler.nlive,
+            batch_logl_bounds=(-Inf, Inf),
+        )
+        sampler.batch = 0
+        sampler.it = length(sampler.saved_run[:logl]) + 1
+        sampler.ncall = static_sampler.ncall
+        sampler.eff = static_sampler.eff
+        sampler.bound_list = static_sampler.bound_list
+        sampler.live_u = copy(static_sampler.live_u)
+        sampler.live_v = copy(static_sampler.live_v)
+        sampler.live_logl = copy(static_sampler.live_logl)
+        sampler.live_blobs = static_sampler.blob ? copy(static_sampler.live_blobs) : nothing
+        sampler.live_bound = copy(static_sampler.live_bound)
+        sampler.live_it = copy(static_sampler.live_it)
+    end
+
+    run_batches = _dynamic_adaptive_requested(adaptive_kwargs)
+    maxbatch_i = isnothing(maxbatch) ? (run_batches ? typemax(Int) : 0) : Int(maxbatch)
+    maxiter_total = _dynamic_limit_value(maxiter)
+    maxcall_total = _dynamic_limit_value(maxcall)
+    maxiter_batch_i = _dynamic_limit_value(maxiter_batch)
+    maxcall_batch_i = _dynamic_limit_value(maxcall_batch)
+    nlive_batch_i = isnothing(nlive_batch) ? sampler.nlive0 : Int(nlive_batch)
+    wt = isnothing(wt_function) ? weight_function : wt_function
+    stop = isnothing(stop_function) ? stopping_function : stop_function
+    stop_args = _dynamic_kwargs_dict(stop_kwargs)
+    if isnothing(stop_function) && !haskey(stop_args, :target_n_effective)
+        stop_args[:target_n_effective] =
+            isnothing(n_effective) ? max(sampler.ndim^2, 10_000) : n_effective
+    end
+    wt_args = isnothing(wt_kwargs) ? nothing : wt_kwargs
+
+    while sampler.batch < maxbatch_i
+        remaining_iter = _dynamic_remaining_limit(maxiter_total, sampler.it - 1)
+        remaining_call = _dynamic_remaining_limit(maxcall_total, sampler.ncall)
+        batch_iter = min(remaining_iter, maxiter_batch_i)
+        batch_call = min(remaining_call, maxcall_batch_i)
+        (batch_iter > 0 && batch_call > 0) || break
+        if use_stop
+            should_stop = stop(results(sampler), stop_args; rng=sampler.rng)
+            should_stop && break
+        end
+        add_batch!(
+            sampler;
+            nlive=nlive_batch_i,
+            update_interval,
+            mode=:weight,
+            wt_function=wt,
+            wt_kwargs=wt_args,
+            maxiter=batch_iter,
+            maxcall=batch_call,
+            save_bounds,
+            print_progress,
+            print_func,
+        )
+    end
+
     sampler.internal_state = DynamicSamplerRunDone
     !isnothing(checkpoint_file) && checkpoint!(sampler, checkpoint_file)
     return sampler

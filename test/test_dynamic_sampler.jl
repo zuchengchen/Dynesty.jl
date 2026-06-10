@@ -203,20 +203,65 @@ end
     end
 end
 
-@testset "Dynamic sampler adaptive batch guard" begin
+@testset "Dynamic sampler adaptive batches" begin
     sampler = DynamicSampler(
         dynamic_loglike,
         dynamic_prior_identity,
         2;
-        nlive=10,
+        nlive=12,
         bound=:none,
         sample=:unif,
         rng=MersenneTwister(727),
     )
-    @test_throws ArgumentError run_nested!(
-        sampler; maxiter_init=3, nlive_batch=10, print_progress=false
+    run_nested!(
+        sampler;
+        maxiter_init=8,
+        dlogz_init=nothing,
+        nlive_batch=6,
+        maxbatch=1,
+        maxiter_batch=4,
+        maxcall_batch=200,
+        use_stop=false,
+        print_progress=false,
     )
-    @test sampler.internal_state == DynamicSamplerInit
+    @test sampler.internal_state == DynamicSamplerRunDone
+    @test sampler.batch == 1
+    res = results(sampler)
+    @test Dynesty.isdynamic(res)
+    @test haskey(res, :samples_n)
+    @test haskey(res, :samples_batch)
+    @test sort(unique(res.samples_batch)) == [0, 1]
+    @test length(res.batch_nlive) == 2
+    @test res.batch_nlive[1] == 12
+    @test res.batch_nlive[2] == 6
+    @test size(res.batch_logl_bounds) == (2, 2)
+    @test res.batch_logl_bounds[1, :] == [-Inf, Inf]
+    @test all(isfinite, res.logz)
+    @test all(diff(res.logvol) .< 0)
+    @test n_effective(sampler) > 1
+
+    manual = DynamicSampler(
+        dynamic_loglike,
+        dynamic_prior_identity,
+        2;
+        nlive=12,
+        bound=:none,
+        sample=:unif,
+        rng=MersenneTwister(728),
+    )
+    run_nested!(manual; maxiter_init=6, dlogz_init=nothing, print_progress=false)
+    add_batch!(
+        manual;
+        nlive=5,
+        maxiter=3,
+        maxcall=150,
+        mode=:manual,
+        logl_bounds=(-Inf, 0.0),
+        print_progress=false,
+    )
+    @test manual.batch == 1
+    @test results(manual).batch_nlive == [12, 5]
+    @test sort(unique(results(manual).samples_batch)) == [0, 1]
 end
 
 @testset "Dynamic sampler weighting fixtures" begin

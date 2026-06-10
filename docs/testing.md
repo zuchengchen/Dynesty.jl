@@ -67,11 +67,13 @@ Stage 6 results post-processing fixtures cover deterministic `reweight_run`,
 Julia seeds because cross-language trajectory equality is intentionally out of
 scope.
 
-Stage 7 dynamic sampler utility fixtures cover `DynamicSamplerState`,
-`compute_weights`, `weight_function`, and the deterministic `n_mc=0` branch of
-`stopping_function`. The Monte Carlo stopping branch depends on language-specific
-random realizations and should be tested by Julia reproducibility/invariant
-checks as the full dynamic sampler engine is migrated.
+Stage 7 dynamic sampler tests cover `DynamicSamplerState`, `compute_weights`,
+`weight_function`, the deterministic `n_mc=0` branch of `stopping_function`,
+baseline dynamic sampler runs, adaptive batch execution, manual `add_batch!`
+runs, dynamic result merging, blobs, saved bounds, and `.jls` checkpoint
+restore. The Monte Carlo stopping branch depends on language-specific random
+realizations and is checked by Julia reproducibility/invariant coverage rather
+than same-seed Python trajectory equality.
 
 Plotting fixtures cover backend-neutral `check_span` and `_hist2d` numerical
 preparation. Full rendered plot smoke tests should remain optional behind

@@ -27,9 +27,10 @@ Implemented:
   callable reattachment.
 - Metadata for package version, Julia version, checkpoint format version, and
   skipped user-function fields.
+- Native `NestedSampler` and `DynamicSampler` snapshots, including RNG state,
+  bounds, live/dead samples, proposal statistics, batch metadata, and restored
+  dynamic/static sampler objects with reattached callables.
 
 Pending for sampler stages:
 
-- Full sampler-native state extraction for bounds, proposal statistics,
-  dynamic batches, and live/dead points once sampler types exist.
 - HDF5 evaluation-history flushing in `DynestyHDF5Ext`.
