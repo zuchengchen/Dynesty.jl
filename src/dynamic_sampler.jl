@@ -946,6 +946,19 @@ function _dynamic_kwargs_dict(args)
     )
 end
 
+function _dynamic_stop_mapper(sampler::DynamicSampler, backend_time::Base.RefValue{Float64})
+    if !sampler.pool_usage.stopping || sampler.map_backend isa SerialMapBackend
+        return map
+    end
+    return (f, iterable) -> begin
+        items = collect(iterable)
+        backend_start = time()
+        values = map_ordered(sampler.map_backend, f, items)
+        backend_time[] += time() - backend_start
+        return values
+    end
+end
+
 function _dynamic_effective_limit(init_limit, global_limit)
     if isnothing(init_limit)
         return global_limit
@@ -1386,8 +1399,16 @@ function run_nested!(
         (batch_iter > 0 && batch_call > 0) || break
         if use_stop
             stop_start = time()
-            should_stop = stop(results(sampler), stop_args; rng=sampler.rng)
-            _record_stop_function!(sampler.parallel_stats, time() - stop_start)
+            backend_time = Ref(0.0)
+            should_stop = if isnothing(stop_function)
+                mapper = _dynamic_stop_mapper(sampler, backend_time)
+                stop(results(sampler), stop_args; rng=sampler.rng, mapper=mapper)
+            else
+                stop(results(sampler), stop_args; rng=sampler.rng)
+            end
+            _record_stop_function!(
+                sampler.parallel_stats, time() - stop_start; backend_time=backend_time[]
+            )
             should_stop && break
         end
         add_batch!(

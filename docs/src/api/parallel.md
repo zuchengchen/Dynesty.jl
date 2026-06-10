@@ -80,6 +80,14 @@ The bound object itself is still mutated only on the main sampler task; backend
 workers receive point-matrix snapshots and deterministic per-task RNGs. Custom
 bounds and non-bootstrap bound refreshes continue to run serially.
 
+Dynamic stopping checks also remain serial by default. With
+`pool_usage=PoolUsage(stopping=true)` or
+`use_pool=Dict("stop_function" => true)`, the default
+[`stopping_function`](@ref) uses the configured backend for its Monte Carlo
+error realizations when `n_mc > 1`. The results object is passed read-only to
+each task, and custom stop functions keep the existing serial call path unless
+they explicitly implement their own mapping behavior.
+
 Reproducibility is guaranteed for the same Julia seed, backend kind, backend
 configuration, thread count, `queue_size`, and `PoolUsage`. Trajectories are
 not required to match across backends or with Python dynesty, and changing
@@ -108,7 +116,8 @@ Key fields include:
   `bound_update_backend_wall_time` for bound refreshes and opt-in bootstrap
   backend work.
 - `stop_function_count` and `stop_function_wall_time` for dynamic stopping
-  checks.
+  checks, plus `stop_function_backend_wall_time` for opt-in default
+  stopping-function Monte Carlo backend work.
 - `map_backend_calls` and `map_backend_wall_time` for backend calls visible to
   the sampler instrumentation.
 

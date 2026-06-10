@@ -50,6 +50,30 @@ function Dynesty.map_ordered(backend::DynamicCountingMapBackend, f, inputs)
     return Dynesty.map_ordered(SerialMapBackend(), f, items)
 end
 
+mutable struct DynamicStopErrorBackend <: Dynesty.AbstractMapBackend
+    queue_size::Int
+    calls::Int
+end
+
+DynamicStopErrorBackend(queue_size::Integer) =
+    DynamicStopErrorBackend(Int(queue_size), 0)
+
+Dynesty.backend_kind(::DynamicStopErrorBackend) = :dynamic_stop_error
+
+function Dynesty.map_ordered(backend::DynamicStopErrorBackend, f, inputs)
+    items = collect(inputs)
+    isempty(items) && return Any[]
+    backend.calls += 1
+    throw(
+        MapTaskError(
+            Dynesty.backend_kind(backend),
+            1,
+            sprint(show, first(items); context=:limit => true),
+            ErrorException("dynamic stop marker"),
+        ),
+    )
+end
+
 function dynamic_saved_record()
     record = RunRecord(; dynamic=true)
     samples_u = [
@@ -385,7 +409,127 @@ end
     )
     @test stop_calls[] == 1
     @test sampler.parallel_stats.stop_function_count == 1
+    @test sampler.parallel_stats.stop_function_backend_wall_time == 0.0
     @test results(sampler).parallel_stats.stop_function_count == 1
+end
+
+@testset "Dynamic sampler stop-function pool usage" begin
+    optout_backend = DynamicCountingMapBackend(3)
+    optout = DynamicSampler(
+        dynamic_loglike,
+        dynamic_prior_identity,
+        2;
+        nlive=10,
+        bound=:none,
+        sample=:unif,
+        rng=MersenneTwister(730),
+        map_backend=optout_backend,
+        pool_usage=PoolUsage(initial=false, proposals=false, stopping=false),
+    )
+    run_nested!(
+        optout;
+        maxiter_init=5,
+        dlogz_init=nothing,
+        nlive_batch=4,
+        maxbatch=1,
+        stop_kwargs=(n_mc=3, target_n_effective=0.0),
+        print_progress=false,
+    )
+    @test optout_backend.calls == 0
+    @test optout.parallel_stats.stop_function_count == 1
+    @test optout.parallel_stats.stop_function_backend_wall_time == 0.0
+
+    optin_backend = DynamicCountingMapBackend(3)
+    optin = DynamicSampler(
+        dynamic_loglike,
+        dynamic_prior_identity,
+        2;
+        nlive=10,
+        bound=:none,
+        sample=:unif,
+        rng=MersenneTwister(730),
+        map_backend=optin_backend,
+        pool_usage=PoolUsage(initial=false, proposals=false, stopping=true),
+    )
+    run_nested!(
+        optin;
+        maxiter_init=5,
+        dlogz_init=nothing,
+        nlive_batch=4,
+        maxbatch=1,
+        stop_kwargs=(n_mc=3, target_n_effective=0.0),
+        print_progress=false,
+    )
+    @test optin_backend.calls == 1
+    @test optin_backend.sizes == [3]
+    @test optin.parallel_stats.stop_function_count == 1
+    @test optin.parallel_stats.stop_function_backend_wall_time > 0.0
+    @test optin.parallel_stats.map_backend_calls == 1
+    @test results(optin).parallel_stats.stop_function_backend_wall_time > 0.0
+
+    function stop_pool_run(seed)
+        sampler = DynamicSampler(
+            dynamic_loglike,
+            dynamic_prior_identity,
+            2;
+            nlive=10,
+            bound=:none,
+            sample=:unif,
+            rng=MersenneTwister(seed),
+            parallel=:threads,
+            queue_size=3,
+            pool_usage=PoolUsage(initial=false, proposals=false, stopping=true),
+        )
+        run_nested!(
+            sampler;
+            maxiter_init=5,
+            dlogz_init=nothing,
+            nlive_batch=4,
+            maxbatch=1,
+            stop_kwargs=(n_mc=3, target_n_effective=0.0),
+            print_progress=false,
+        )
+        res = results(sampler)
+        return (logl=copy(res.logl), logz=copy(res.logz), ncall=copy(res.ncall))
+    end
+    first_run = stop_pool_run(731)
+    second_run = stop_pool_run(731)
+    @test first_run.logl == second_run.logl
+    @test first_run.logz == second_run.logz
+    @test first_run.ncall == second_run.ncall
+
+    error_backend = DynamicStopErrorBackend(3)
+    failing = DynamicSampler(
+        dynamic_loglike,
+        dynamic_prior_identity,
+        2;
+        nlive=10,
+        bound=:none,
+        sample=:unif,
+        rng=MersenneTwister(732),
+        map_backend=error_backend,
+        pool_usage=PoolUsage(initial=false, proposals=false, stopping=true),
+    )
+    err = try
+        run_nested!(
+            failing;
+            maxiter_init=5,
+            dlogz_init=nothing,
+            nlive_batch=4,
+            maxbatch=1,
+            stop_kwargs=(n_mc=3, target_n_effective=0.0),
+            print_progress=false,
+        )
+        nothing
+    catch caught
+        caught
+    end
+    @test err isa MapTaskError
+    @test err.backend == :dynamic_stop_error
+    @test err.index == 1
+    @test occursin("Results", sprint(showerror, err))
+    @test occursin("dynamic stop marker", sprint(showerror, err))
+    @test error_backend.calls == 1
 end
 
 @testset "Dynamic sampler weighting fixtures" begin
