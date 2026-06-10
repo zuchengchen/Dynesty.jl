@@ -15,6 +15,7 @@ import scipy
 import dynesty
 from dynesty import utils
 from dynesty import bounding
+from dynesty import dynamicsampler
 
 
 ROOT = Path(__file__).resolve().parents[3]
@@ -341,6 +342,103 @@ def main() -> None:
     }
     (FIXTURES / "results_postprocess.json").write_text(
         json.dumps(postprocess_fixture, indent=2, sort_keys=True) + "\n"
+    )
+
+    dyn_samples_n = np.array([6, 6, 5, 5, 4, 4, 3])
+    dyn_logl = np.array([-6.0, -5.1, -4.2, -3.0, -2.4, -1.5, -0.8])
+    dyn_logvol = np.cumsum(np.log(dyn_samples_n / (dyn_samples_n + 1.0)))
+    dyn_logwt, dyn_logz, dyn_logzvar, dyn_h = utils.compute_integrals(
+        logl=dyn_logl, logvol=dyn_logvol
+    )
+    dyn_res = utils.Results(
+        dict(
+            niter=len(dyn_logl),
+            ncall=np.array([2, 2, 3, 2, 4, 3, 1]),
+            eff=100.0 * len(dyn_logl) / np.sum([2, 2, 3, 2, 4, 3, 1]),
+            samples=np.column_stack(
+                (
+                    np.linspace(0.1, 0.7, len(dyn_logl)),
+                    np.linspace(0.2, 0.8, len(dyn_logl)),
+                )
+            ),
+            samples_u=np.column_stack(
+                (
+                    np.linspace(0.05, 0.35, len(dyn_logl)),
+                    np.linspace(0.15, 0.45, len(dyn_logl)),
+                )
+            ),
+            samples_id=np.array([0, 1, 2, 0, 1, 2, 0]),
+            samples_it=np.arange(1, len(dyn_logl) + 1),
+            samples_n=dyn_samples_n,
+            logwt=dyn_logwt,
+            logl=dyn_logl,
+            logvol=dyn_logvol,
+            logz=dyn_logz,
+            logzerr=np.sqrt(np.maximum(dyn_logzvar, 0)),
+            information=dyn_h,
+            blob=np.array([None] * len(dyn_logl), dtype=object),
+            proposal_stats=np.array([None] * len(dyn_logl), dtype=object),
+        )
+    )
+    zweight, pweight = dynamicsampler.compute_weights(dyn_res)
+    weight_args = dict(pfrac=0.0, maxfrac=0.99, pad=1)
+    weight_bounds, weights = dynamicsampler.weight_function(
+        dyn_res, args=weight_args, return_weights=True
+    )
+    stop_args = dict(
+        pfrac=0.35,
+        evid_thresh=0.25,
+        target_n_effective=4.0,
+        n_mc=0,
+        error="jitter",
+        approx=True,
+    )
+    stop_flag, stop_vals = dynamicsampler.stopping_function(
+        dyn_res, args=stop_args, return_vals=True
+    )
+    dynamic_fixture = {
+        "source": fixture["source"],
+        "input": result_summary(dyn_res),
+        "compute_weights": {
+            "zweight": np.asarray(zweight).tolist(),
+            "pweight": np.asarray(pweight).tolist(),
+        },
+        "weight_function": {
+            "args": weight_args,
+            "bounds": list(map(float, weight_bounds)),
+            "pweight": np.asarray(weights[0]).tolist(),
+            "zweight": np.asarray(weights[1]).tolist(),
+            "weight": np.asarray(weights[2]).tolist(),
+        },
+        "stopping_function": {
+            "args": stop_args,
+            "flag": bool(stop_flag),
+            "stop_post": float(stop_vals[0]),
+            "stop_evid": float(stop_vals[1]),
+            "stop": float(stop_vals[2]),
+        },
+        "state_values": {
+            "INIT": int(dynamicsampler.DynamicSamplerStatesEnum.INIT.value),
+            "LIVEPOINTSINIT": int(
+                dynamicsampler.DynamicSamplerStatesEnum.LIVEPOINTSINIT.value
+            ),
+            "INBASE": int(dynamicsampler.DynamicSamplerStatesEnum.INBASE.value),
+            "BASE_DONE": int(dynamicsampler.DynamicSamplerStatesEnum.BASE_DONE.value),
+            "INBATCH": int(dynamicsampler.DynamicSamplerStatesEnum.INBATCH.value),
+            "BATCH_DONE": int(dynamicsampler.DynamicSamplerStatesEnum.BATCH_DONE.value),
+            "INBASEADDLIVE": int(
+                dynamicsampler.DynamicSamplerStatesEnum.INBASEADDLIVE.value
+            ),
+            "INBATCHADDLIVE": int(
+                dynamicsampler.DynamicSamplerStatesEnum.INBATCHADDLIVE.value
+            ),
+            "RUN_DONE": int(dynamicsampler.DynamicSamplerStatesEnum.RUN_DONE.value),
+        },
+        "rtol": 1e-10,
+        "atol": 1e-12,
+    }
+    (FIXTURES / "dynamic_core.json").write_text(
+        json.dumps(dynamic_fixture, indent=2, sort_keys=True) + "\n"
     )
 
 

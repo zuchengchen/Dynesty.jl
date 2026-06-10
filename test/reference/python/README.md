@@ -28,6 +28,8 @@ Current fixture files:
 - `fixtures/results_postprocess.json`: deterministic results post-processing
   cross-checks for reweighting, unraveling, merging, static-result conversion,
   and live-point-count helpers.
+- `fixtures/dynamic_core.json`: dynamic sampler state, weighting, batch-bound,
+  and deterministic stopping-function cross-checks.
 
 Current source snapshot:
 

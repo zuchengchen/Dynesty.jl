@@ -1,6 +1,15 @@
 module Dynesty
 
 export DistributedMapBackend,
+    DynamicSamplerBaseDone,
+    DynamicSamplerBatchDone,
+    DynamicSamplerInBase,
+    DynamicSamplerInBaseAddLive,
+    DynamicSamplerInBatch,
+    DynamicSamplerInBatchAddLive,
+    DynamicSamplerInit,
+    DynamicSamplerLivePointsInit,
+    DynamicSamplerRunDone,
     Ellipsoid,
     LogLikelihood,
     LoglOutput,
@@ -28,7 +37,9 @@ export DistributedMapBackend,
     checkpoint!,
     check_result_static,
     citations,
+    compute_weights,
     compute_integrals,
+    DynamicSamplerState,
     from_python_indices,
     get_citations,
     get_neff_from_logwt,
@@ -58,6 +69,7 @@ export DistributedMapBackend,
     reweight_run,
     run_nested,
     run_nested!,
+    stopping_function,
     unravel_run,
     add_live_points!,
     samples_equal,
@@ -69,7 +81,8 @@ export DistributedMapBackend,
     propose_ball_point,
     task_seeds,
     tune_slice,
-    unitcheck
+    unitcheck,
+    weight_function
 
 include("utils.jl")
 include("results.jl")

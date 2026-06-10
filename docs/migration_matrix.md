@@ -32,10 +32,10 @@ Statuses:
 | `dynesty.bounding._ellipsoid_bootstrap_expand` | `_ellipsoid_bootstrap_expand` | B | planned | `test/test_bounding_unitcube_ellipsoid.jl` | planned | Internal bootstrap expansion. |
 | `dynesty.bounding._friends_bootstrap_radius` | `_friends_bootstrap_radius` | B | implemented | `test/test_bounding_friends.jl` | `test/reference/python/fixtures/friends_core.json` | Friends radius helper; random bootstrap checked by invariants. |
 | `dynesty.bounding._friends_leaveoneout_radius` | `_friends_leaveoneout_radius` | B | implemented | `test/test_bounding_friends.jl` | `test/reference/python/fixtures/friends_core.json` | Leave-one-out radius helper. |
-| `dynesty.dynamicsampler.DynamicSamplerStatesEnum` | `DynamicSamplerState` | B | planned | `test/test_dynamic_sampler.jl` | planned | Julia enum-like replacement. |
-| `dynesty.dynamicsampler.compute_weights` | `compute_weights` | A | planned | `test/test_dynamic_sampler.jl` | planned | Dynamic weighting. |
-| `dynesty.dynamicsampler.weight_function` | `weight_function` | A | planned | `test/test_dynamic_sampler.jl` | planned | Dynamic batch weighting. |
-| `dynesty.dynamicsampler.stopping_function` | `stopping_function` | A | planned | `test/test_dynamic_sampler.jl` | planned | Stopping criteria. |
+| `dynesty.dynamicsampler.DynamicSamplerStatesEnum` | `DynamicSamplerState` | B | implemented | `test/test_dynamic_sampler.jl` | `test/reference/python/fixtures/dynamic_core.json` | Julia enum replacement with matching state numeric values. |
+| `dynesty.dynamicsampler.compute_weights` | `compute_weights` | A | implemented | `test/test_dynamic_sampler.jl` | `test/reference/python/fixtures/dynamic_core.json` | Dynamic evidence/posterior weighting. |
+| `dynesty.dynamicsampler.weight_function` | `weight_function` | A | implemented | `test/test_dynamic_sampler.jl` | `test/reference/python/fixtures/dynamic_core.json` | Dynamic batch-bound weighting heuristic. |
+| `dynesty.dynamicsampler.stopping_function` | `stopping_function` | A | implemented | `test/test_dynamic_sampler.jl` | `test/reference/python/fixtures/dynamic_core.json` | Default stopping criteria; deterministic fixture covers `n_mc=0`, Monte Carlo branch is checked by Julia invariants later. |
 | `dynesty.dynamicsampler._configure_batch_sampler` | `_configure_batch_sampler` | B | planned | `test/test_dynamic_sampler.jl` | planned | Internal dynamic configuration. |
 | `dynesty.dynamicsampler.DynamicSampler` | `DynamicSampler` | A | planned | `test/test_dynamic_sampler.jl` | planned | Dynamic sampler engine. |
 | `dynesty.dynesty._get_citations` | `get_citations` | C | implemented | `test/runtests.jl` | not needed | Julia helper includes required citation set. |

@@ -63,3 +63,9 @@ Stage 6 results post-processing fixtures cover deterministic `reweight_run`,
 `resample_run`, and `kld_error`) are checked by invariants with deterministic
 Julia seeds because cross-language trajectory equality is intentionally out of
 scope.
+
+Stage 7 dynamic sampler utility fixtures cover `DynamicSamplerState`,
+`compute_weights`, `weight_function`, and the deterministic `n_mc=0` branch of
+`stopping_function`. The Monte Carlo stopping branch depends on language-specific
+random realizations and should be tested by Julia reproducibility/invariant
+checks as the full dynamic sampler engine is migrated.
