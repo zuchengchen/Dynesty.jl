@@ -6,6 +6,30 @@ using Test
 plotting_matrix_from_json(rows) =
     reduce(vcat, [reshape(Vector{Float64}(row), 1, :) for row in rows])
 
+function plotting_results_fixture()
+    samples = [
+        0.10 1.00 -0.40
+        0.25 0.80 -0.15
+        0.40 0.65 0.10
+        0.55 0.45 0.30
+        0.70 0.30 0.55
+        0.85 0.12 0.80
+    ]
+    logz = [-4.5, -3.3, -2.4, -1.7, -1.25, -1.0]
+    return Results(;
+        samples=samples,
+        samples_u=copy(samples),
+        samples_id=[1, 2, 1, 2, 1, 2],
+        logl=[-6.0, -4.8, -3.7, -2.4, -1.3, -0.6],
+        logvol=[-0.1, -0.6, -1.1, -1.8, -2.6, -3.4],
+        logwt=[-5.2, -4.0, -3.1, -2.0, -1.45, -1.2],
+        logz=logz,
+        logzerr=[0.55, 0.45, 0.35, 0.25, 0.18, 0.12],
+        nlive=2,
+        niter=4,
+    )
+end
+
 @testset "Plotting span helper" begin
     fixture = JSON3.read(
         read(
@@ -77,4 +101,95 @@ end
     @test_throws ArgumentError Dynesty._hist2d(
         [1.0, 1.0], [2.0, 2.0]; span=[[0.0, 0.0], [1.0, 2.0]]
     )
+end
+
+@testset "Plotting data APIs and recipes" begin
+    res = plotting_results_fixture()
+
+    run = runplot(res; kde=false, lnz_truth=-0.5)
+    @test run isa RunPlotData
+    @test run.yseries[1] == [2.0, 2.0, 2.0, 2.0, 2.0, 1.0]
+    @test run.final_live_index == 5
+    @test run.final_live_x == -res.logvol[5]
+    @test run.truth_y ≈ exp(-0.5)
+    @test length(run.evidence_error_bands) == 3
+    run_recipes = RecipesBase.apply_recipe(Dict{Symbol, Any}(), run)
+    @test length(run_recipes) == 12
+    @test run_recipes[1].args == (run.xseries[1], run.yseries[1])
+
+    run_kde = runplot(res; kde=true, nkde=8, lnz_error=false, logplot=true)
+    @test length(run_kde.xseries[3]) == 8
+    @test length(run_kde.yseries[3]) == 8
+    @test isempty(run_kde.evidence_error_bands)
+    @test run_kde.labels[4] == "log(Evidence)"
+
+    trace = traceplot(
+        res;
+        dims=[1, 3],
+        smooth=(4, 0.5),
+        thin=2,
+        kde=false,
+        labels=["alpha", "gamma"],
+        truths=[0.5, nothing],
+    )
+    @test trace isa TracePlotData
+    @test size(trace.samples) == (2, 6)
+    @test trace.dims == [1, 3]
+    @test trace.labels == ["alpha", "gamma"]
+    @test trace.smooth == Union{Int, Float64}[4, 0.5]
+    @test length(trace.marginals[1].density) == 4
+    @test length(trace.quantiles[1]) == 3
+    @test trace.truths == Union{Nothing, Float64}[0.5, nothing]
+    trace_recipes = RecipesBase.apply_recipe(Dict{Symbol, Any}(), trace)
+    @test length(trace_recipes) == 10
+    @test length(trace_recipes[1].args[1]) == 3
+
+    points = cornerpoints(
+        res;
+        dims=[1, 2, 3],
+        span=[1.0, 1.0, 1.0],
+        thin=2,
+        kde=false,
+        labels=["alpha", "beta", "gamma"],
+    )
+    @test points isa CornerPointsData
+    @test size(points.samples) == (3, 6)
+    @test !isnothing(points.span)
+    points_recipes = RecipesBase.apply_recipe(Dict{Symbol, Any}(), points)
+    @test length(points_recipes) == 3
+    @test length(points_recipes[1].args[1]) == 3
+
+    corner = cornerplot(
+        res;
+        dims=[1, 2],
+        span=[1.0, 1.0],
+        smooth=[4, 4],
+        quantiles=[0.25, 0.5, 0.75],
+        labels=["alpha", "beta"],
+    )
+    @test corner isa CornerPlotData
+    @test size(corner.hist2d) == (2, 2)
+    @test isnothing(corner.hist2d[1, 2])
+    @test corner.hist2d[2, 1] isa Hist2DResult
+    corner_recipes = RecipesBase.apply_recipe(Dict{Symbol, Any}(), corner)
+    @test length(corner_recipes) == 9
+    heatmap_recipe = only(filter(recipe -> length(recipe.args) == 3, corner_recipes))
+    @test heatmap_recipe.args[3] == transpose(corner.hist2d[2, 1].density)
+
+    one_dim = Results(;
+        samples=res.samples[:, 1],
+        samples_u=res.samples_u[:, 1],
+        samples_id=res.samples_id,
+        logl=res.logl,
+        logvol=res.logvol,
+        logwt=res.logwt,
+        logz=res.logz,
+        logzerr=res.logzerr,
+        nlive=res.nlive,
+        niter=res.niter,
+    )
+    @test_throws ArgumentError cornerpoints(one_dim)
+    @test_throws ArgumentError traceplot(res; thin=0)
+    @test_throws ArgumentError traceplot(res; dims=[0])
+    @test_throws DimensionMismatch cornerplot(res; dims=[1, 2], labels=["only one"])
 end

@@ -61,10 +61,10 @@ Statuses:
 | `dynesty.plotting.rotate_ticks` | plotting backend setup | C | replacement | `test/test_plotting.jl` | not needed | Matplotlib-specific helper not directly exposed. |
 | `dynesty.plotting.plot_thruth` | `plot_truth` | C | implemented | `test/test_plotting.jl` | not needed | Backend-neutral truth-line data helper; Python typo is not exported. |
 | `dynesty.plotting.check_span` | `check_span` | B | implemented | `test/test_plotting.jl` | `test/reference/python/fixtures/plotting_core.json` | Plot range helper; Julia returns normalized spans instead of mutating input. |
-| `dynesty.plotting.runplot` | `runplot` | C | planned | `test/test_plotting.jl` | not needed | Plot smoke test. |
-| `dynesty.plotting.traceplot` | `traceplot` | C | planned | `test/test_plotting.jl` | not needed | Plot smoke test. |
-| `dynesty.plotting.cornerpoints` | `cornerpoints` | C | planned | `test/test_plotting.jl` | not needed | Plot smoke test. |
-| `dynesty.plotting.cornerplot` | `cornerplot` | C | planned | `test/test_plotting.jl` | not needed | Plot smoke test. |
+| `dynesty.plotting.runplot` | `runplot` / `RunPlotData` | C | implemented | `test/test_plotting.jl` | not needed | Backend-neutral run summary data and RecipesBase recipe; Matplotlib figure setup is replaced. |
+| `dynesty.plotting.traceplot` | `traceplot` / `TracePlotData` | C | implemented | `test/test_plotting.jl` | not needed | Backend-neutral trace and 1-D marginal data with RecipesBase recipe. |
+| `dynesty.plotting.cornerpoints` | `cornerpoints` / `CornerPointsData` | C | implemented | `test/test_plotting.jl` | not needed | Backend-neutral lower-triangle point cloud data with RecipesBase recipe. |
+| `dynesty.plotting.cornerplot` | `cornerplot` / `CornerPlotData` | C | implemented | `test/test_plotting.jl` | not needed | Backend-neutral corner marginal data using `_hist2d` and RecipesBase recipe. |
 | `dynesty.plotting.boundplot` | `boundplot` | C | planned | `test/test_plotting.jl` | not needed | Plot smoke test. |
 | `dynesty.plotting.cornerbound` | `cornerbound` | C | planned | `test/test_plotting.jl` | not needed | Plot smoke test. |
 | `dynesty.plotting._hist2d` | `_hist2d` / `Hist2DResult` | B | implemented | `test/test_plotting.jl` | `test/reference/python/fixtures/plotting_core.json` | Numerical histogram/contour helper with RecipesBase recipe. |
