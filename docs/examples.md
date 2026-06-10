@@ -1,16 +1,18 @@
-# Examples Plan
+# Examples
 
-Important Python demos and notebooks will be migrated to Julia `.jl` examples
-and Markdown tutorials. The final migration target includes:
+Julia examples live in `examples/` and are smoke-tested by
+`test/test_examples.jl`. They are intentionally dependency-light and avoid
+requiring plotting packages in the default test suite.
 
-- `examples/overview.jl`
-- `examples/dynamic_nested_sampling.jl`
-- `examples/errors.jl`
-- `examples/gaussian.jl`
-- `examples/eggbox.jl`
-- `examples/gaussian_shells.jl`
-- `examples/high_dimensional_gaussian.jl`
+| Example | Coverage |
+| --- | --- |
+| `examples/overview.jl` | Static nested sampling overview with a two-dimensional Gaussian likelihood. |
+| `examples/dynamic_nested_sampling.jl` | Dynamic nested sampling with one adaptive batch. |
+| `examples/errors.jl` | Evidence-error post-processing with `jitter_run` and `resample_run`. |
+| `examples/gaussian.jl` | Gaussian posterior summary using posterior importance weights. |
+| `examples/eggbox.jl` | Multimodal eggbox likelihood smoke run. |
+| `examples/gaussian_shells.jl` | Two-shell likelihood smoke run. |
+| `examples/high_dimensional_gaussian.jl` | Higher-dimensional Gaussian smoke run. |
 
-Examples should be smoke-testable where practical and should avoid requiring
-Plots.jl unless an optional plotting path is explicitly being exercised.
-
+Each example defines `main(; kwargs...)` and only prints a compact summary when
+executed directly as a script.
