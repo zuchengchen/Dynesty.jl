@@ -14,7 +14,7 @@ Statuses:
 | --- | --- | --- | --- | --- | --- | --- |
 | `dynesty.NestedSampler` | `NestedSampler` | A | implemented | `test/test_static_sampler.jl` | statistical/invariant | Public static sampler API with Julia-native mutating `run_nested!`, result extraction, blobs, bounds, checkpoint restore, and progress callback plumbing. |
 | `dynesty.DynamicNestedSampler` | `DynamicNestedSampler` | A | planned | `test/test_dynamic_sampler.jl` | planned | Public dynamic sampler API. |
-| `dynesty.bounding.Bound` | `AbstractBound` | B | planned | `test/test_bounding_unitcube_ellipsoid.jl` | planned | Julia abstract interface replacement. |
+| `dynesty.bounding.Bound` | `AbstractBound` | B | replacement | `test/test_bounding_unitcube_ellipsoid.jl` | not needed | Julia abstract bound interface replacement; concrete bounds subtype `AbstractBound` and sampler factories accept the abstract interface. |
 | `dynesty.bounding.UnitCube` | `UnitCube` | A | implemented | `test/test_bounding_unitcube_ellipsoid.jl` | `test/reference/python/fixtures/bounding_core.json` | Unit-cube bound. |
 | `dynesty.bounding.Ellipsoid` | `Ellipsoid` | A | implemented | `test/test_bounding_unitcube_ellipsoid.jl` | `test/reference/python/fixtures/bounding_core.json` | Ellipsoid bound. |
 | `dynesty.bounding.MultiEllipsoid` | `MultiEllipsoid` | A | implemented | `test/test_bounding_unitcube_ellipsoid.jl` | `test/reference/python/fixtures/bounding_core.json` | Multi-ellipsoid bound with recursive clustering split support. |

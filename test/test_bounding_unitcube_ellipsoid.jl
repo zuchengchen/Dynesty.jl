@@ -8,6 +8,24 @@ using Test
 matrix_from_json(rows) = reduce(vcat, [reshape(Vector{Float64}(row), 1, :) for row in rows])
 matrices_from_json(blocks) = [matrix_from_json(block) for block in blocks]
 
+@testset "AbstractBound replacement interface" begin
+    bound_types = (UnitCube, Ellipsoid, MultiEllipsoid, RadFriends, SupFriends)
+    for bound_type in bound_types
+        @test bound_type <: AbstractBound
+        bound = bound_type(2)
+        @test bound isa AbstractBound
+        @test bound.ndim == 2
+        @test hasproperty(bound, :logvol)
+        @test hasproperty(bound, :funit)
+        @test hasproperty(bound, :need_centers)
+    end
+    @test Dynesty._get_bound(:none, 2) isa AbstractBound
+    @test Dynesty._get_bound(:single, 2) isa AbstractBound
+    @test Dynesty._get_bound(:multi, 2) isa AbstractBound
+    @test Dynesty._get_bound(:balls, 2) isa AbstractBound
+    @test Dynesty._get_bound(:cubes, 2) isa AbstractBound
+end
+
 @testset "UnitCube bound" begin
     cube = UnitCube(3)
     @test cube.ndim == 3
