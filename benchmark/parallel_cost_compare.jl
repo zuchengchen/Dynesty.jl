@@ -255,8 +255,7 @@ function monitor_memory!(peak::MemoryPeak, root_pid::Integer, proc::Base.Process
             if isnothing(peak.peak_pss_kb) || sample.pss_kb > peak.peak_pss_kb
                 peak.peak_pss_kb = sample.pss_kb
             end
-        else
-            peak.pss_available = false
+            peak.pss_available = true
         end
         return peak
     end
@@ -442,7 +441,7 @@ function run_monitored!(
     end
     cmd = setenv(cmd, cmd_env)
     start_wall = time()
-    peak = MemoryPeak(0, nothing, 0, true)
+    peak = MemoryPeak(0, nothing, 0, false)
     proc = nothing
     stdout_io = open(stdout_path, "w")
     stderr_io = open(stderr_path, "w")
