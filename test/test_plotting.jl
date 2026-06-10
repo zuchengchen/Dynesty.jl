@@ -1,5 +1,7 @@
 using Dynesty
 using JSON3
+using LinearAlgebra
+using Random
 using RecipesBase
 using Test
 
@@ -27,6 +29,39 @@ function plotting_results_fixture()
         logzerr=[0.55, 0.45, 0.35, 0.25, 0.18, 0.12],
         nlive=2,
         niter=4,
+    )
+end
+
+function plotting_bound_results_fixture()
+    samples_u = [
+        0.20 0.20 0.30
+        0.80 0.20 0.40
+        0.20 0.80 0.50
+        0.80 0.80 0.60
+        0.35 0.35 0.45
+        0.65 0.35 0.55
+        0.35 0.65 0.50
+        0.65 0.65 0.60
+    ]
+    samples = copy(samples_u)
+    bounds = Any[
+        UnitCube(3), Ellipsoid(3; ctr=[0.5, 0.5, 0.5], cov=Diagonal([0.04, 0.05, 0.03]))
+    ]
+    return Results(;
+        samples,
+        samples_u,
+        samples_id=[1, 2, 3, 4, 1, 2, 3, 4],
+        samples_it=[1, 2, 3, 4, 5, 6, 7, 8],
+        logl=collect(-8.0:-1.0),
+        logvol=collect(range(-0.2, -2.0; length=8)),
+        logwt=collect(range(-8.0, -1.0; length=8)),
+        logz=collect(range(-7.5, -0.5; length=8)),
+        logzerr=fill(0.1, 8),
+        nlive=4,
+        niter=4,
+        bound=bounds,
+        bound_iter=[0, 1, 1, 1, 1, 1, 1, 1],
+        samples_bound=[0, 0, 1, 1, 1, 1, 1, 1],
     )
 end
 
@@ -192,4 +227,100 @@ end
     @test_throws ArgumentError traceplot(res; thin=0)
     @test_throws ArgumentError traceplot(res; dims=[0])
     @test_throws DimensionMismatch cornerplot(res; dims=[1, 2], labels=["only one"])
+end
+
+@testset "Bound plotting data APIs and recipes" begin
+    res = plotting_bound_results_fixture()
+
+    bound = boundplot(
+        res,
+        [1, 3];
+        idx=3,
+        ndraws=12,
+        show_live=true,
+        labels=["u1", "u3"],
+        rng=MersenneTwister(12),
+    )
+    @test bound isa BoundPlotData
+    @test size(bound.draws) == (12, 2)
+    @test size(bound.live) == (4, 2)
+    @test bound.dims == [1, 3]
+    @test bound.labels == ["u1", "u3"]
+    @test bound.bound_index == 2
+    @test bound.selection_kind == :idx
+    @test bound.selection_value == 3
+    @test all(isfinite, bound.draws)
+    bound_recipes = RecipesBase.apply_recipe(Dict{Symbol, Any}(), bound)
+    @test length(bound_recipes) == 2
+    @test length(bound_recipes[1].args[1]) == 12
+    @test length(bound_recipes[2].args[1]) == 4
+
+    transformed = boundplot(
+        res,
+        [1, 2];
+        it=2,
+        ndraws=10,
+        prior_transform=u -> 2 .* u .- 1,
+        span=[[-1.0, 1.0], [-1.0, 1.0]],
+        rng=MersenneTwister(13),
+    )
+    @test transformed.bound_index == 2
+    @test transformed.selection_kind == :it
+    @test transformed.span == [(-1.0, 1.0), (-1.0, 1.0)]
+    @test size(transformed.draws, 2) == 2
+    @test all(-1.0 .< transformed.draws .< 1.0)
+
+    corner = cornerbound(
+        res;
+        idx=4,
+        dims=[1, 2, 3],
+        ndraws=9,
+        show_live=true,
+        labels=["u1", "u2", "u3"],
+        rng=MersenneTwister(14),
+    )
+    @test corner isa CornerBoundData
+    @test size(corner.draws) == (9, 3)
+    @test size(corner.live) == (4, 3)
+    @test corner.bound_index == 2
+    corner_recipes = RecipesBase.apply_recipe(Dict{Symbol, Any}(), corner)
+    @test length(corner_recipes) == 6
+    @test length(corner_recipes[1].args[1]) == 9
+    @test length(corner_recipes[2].args[1]) == 4
+
+    one_dim = Results(;
+        samples=res.samples[:, 1],
+        samples_u=res.samples_u[:, 1:1],
+        samples_id=res.samples_id,
+        logl=res.logl,
+        logvol=res.logvol,
+        logwt=res.logwt,
+        logz=res.logz,
+        logzerr=res.logzerr,
+        nlive=res.nlive,
+        niter=res.niter,
+        bound=[UnitCube(1)],
+        bound_iter=fill(0, length(res.logl)),
+        samples_bound=fill(0, length(res.logl)),
+    )
+    @test_throws ArgumentError cornerbound(one_dim; idx=1)
+    @test_throws ArgumentError boundplot(res, [1, 2])
+    @test_throws BoundsError boundplot(res, [1, 2]; idx=0)
+    @test_throws DimensionMismatch boundplot(res, [1, 2, 3]; idx=1)
+    @test_throws ArgumentError boundplot(
+        Results(;
+            samples=res.samples,
+            samples_u=res.samples_u,
+            samples_id=res.samples_id,
+            logl=res.logl,
+            logvol=res.logvol,
+            logwt=res.logwt,
+            logz=res.logz,
+            logzerr=res.logzerr,
+            nlive=res.nlive,
+            niter=res.niter,
+        ),
+        [1, 2];
+        idx=1,
+    )
 end

@@ -65,8 +65,8 @@ Statuses:
 | `dynesty.plotting.traceplot` | `traceplot` / `TracePlotData` | C | implemented | `test/test_plotting.jl` | not needed | Backend-neutral trace and 1-D marginal data with RecipesBase recipe. |
 | `dynesty.plotting.cornerpoints` | `cornerpoints` / `CornerPointsData` | C | implemented | `test/test_plotting.jl` | not needed | Backend-neutral lower-triangle point cloud data with RecipesBase recipe. |
 | `dynesty.plotting.cornerplot` | `cornerplot` / `CornerPlotData` | C | implemented | `test/test_plotting.jl` | not needed | Backend-neutral corner marginal data using `_hist2d` and RecipesBase recipe. |
-| `dynesty.plotting.boundplot` | `boundplot` | C | planned | `test/test_plotting.jl` | not needed | Plot smoke test. |
-| `dynesty.plotting.cornerbound` | `cornerbound` | C | planned | `test/test_plotting.jl` | not needed | Plot smoke test. |
+| `dynesty.plotting.boundplot` | `boundplot` / `BoundPlotData` | C | implemented | `test/test_plotting.jl` | not needed | Backend-neutral saved-bound draws with optional static live-point reconstruction and RecipesBase recipe. |
+| `dynesty.plotting.cornerbound` | `cornerbound` / `CornerBoundData` | C | implemented | `test/test_plotting.jl` | not needed | Backend-neutral lower-triangle saved-bound draws with optional static live-point reconstruction and RecipesBase recipe. |
 | `dynesty.plotting._hist2d` | `_hist2d` / `Hist2DResult` | B | implemented | `test/test_plotting.jl` | `test/reference/python/fixtures/plotting_core.json` | Numerical histogram/contour helper with RecipesBase recipe. |
 | `dynesty.pool.FunctionCache` | backend task closure | C | replacement | `test/test_parallel.jl` | not needed | Julia map backends replace Python multiprocessing cache. |
 | `dynesty.pool.initializer` | backend initialization | C | replacement | `test/test_parallel.jl` | not needed | Julia backend setup. |

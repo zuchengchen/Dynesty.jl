@@ -1,3 +1,4 @@
+using Random
 using RecipesBase
 
 """
@@ -162,6 +163,38 @@ struct CornerPlotData
     quantiles::Vector{Vector{Float64}}
     hist2d::Matrix{Union{Nothing, Hist2DResult}}
     truths::Vector{Union{Nothing, Float64}}
+end
+
+"""
+    BoundPlotData
+
+Prepared samples from a saved bound, projected onto two dimensions.
+"""
+struct BoundPlotData
+    draws::Matrix{Float64}
+    live::Union{Nothing, Matrix{Float64}}
+    dims::Vector{Int}
+    labels::Vector{String}
+    span::Union{Nothing, Vector{Tuple{Float64, Float64}}}
+    bound_index::Int
+    selection_kind::Symbol
+    selection_value::Int
+end
+
+"""
+    CornerBoundData
+
+Prepared lower-triangle projections from a saved bound.
+"""
+struct CornerBoundData
+    draws::Matrix{Float64}
+    live::Union{Nothing, Matrix{Float64}}
+    dims::Vector{Int}
+    labels::Vector{String}
+    span::Union{Nothing, Vector{Tuple{Float64, Float64}}}
+    bound_index::Int
+    selection_kind::Symbol
+    selection_value::Int
 end
 
 """
@@ -643,6 +676,92 @@ function cornerplot(
     )
 end
 
+"""
+    boundplot(results, dims; it=nothing, idx=nothing, prior_transform=nothing,
+              periodic=nothing, reflective=nothing, ndraws=5000,
+              show_live=false, span=nothing, labels=nothing,
+              rng=Random.default_rng())
+
+Prepare draws from the saved bound associated with either iteration `it` or
+sample index `idx`, projected onto two dimensions. `it`, `idx`, and `dims` use
+Julia's 1-based indexing.
+"""
+function boundplot(
+    res::Results,
+    dims;
+    it=nothing,
+    idx=nothing,
+    prior_transform=nothing,
+    periodic=nothing,
+    reflective=nothing,
+    ndraws::Integer=5000,
+    show_live::Bool=false,
+    span=nothing,
+    labels=nothing,
+    rng::AbstractRNG=Random.default_rng(),
+)
+    dims_v = _resolve_dims(dims, _bound_result_ndim(res))
+    length(dims_v) == 2 ||
+        throw(DimensionMismatch("boundplot dims length $(length(dims_v)) != 2"))
+    draws, live, bound_index, kind, value = _prepare_bound_draws(
+        res; it, idx, prior_transform, periodic, reflective, ndraws, show_live, rng
+    )
+    plot_draws = draws[:, dims_v]
+    plot_live = isnothing(live) ? nothing : live[:, dims_v]
+    return BoundPlotData(
+        plot_draws,
+        plot_live,
+        dims_v,
+        _resolve_labels(labels, dims_v),
+        _resolve_bound_span(span, length(dims_v)),
+        bound_index,
+        kind,
+        value,
+    )
+end
+
+"""
+    cornerbound(results; it=nothing, idx=nothing, dims=nothing,
+                prior_transform=nothing, periodic=nothing, reflective=nothing,
+                ndraws=5000, show_live=false, span=nothing, labels=nothing,
+                rng=Random.default_rng())
+
+Prepare lower-triangle projections from the saved bound associated with either
+iteration `it` or sample index `idx`. `it`, `idx`, and `dims` use Julia's
+1-based indexing.
+"""
+function cornerbound(
+    res::Results;
+    it=nothing,
+    idx=nothing,
+    dims=nothing,
+    prior_transform=nothing,
+    periodic=nothing,
+    reflective=nothing,
+    ndraws::Integer=5000,
+    show_live::Bool=false,
+    span=nothing,
+    labels=nothing,
+    rng::AbstractRNG=Random.default_rng(),
+)
+    dims_v = _resolve_dims(dims, _bound_result_ndim(res))
+    length(dims_v) > 1 ||
+        throw(ArgumentError("cornerbound does not work for 1-D posteriors"))
+    draws, live, bound_index, kind, value = _prepare_bound_draws(
+        res; it, idx, prior_transform, periodic, reflective, ndraws, show_live, rng
+    )
+    return CornerBoundData(
+        draws[:, dims_v],
+        isnothing(live) ? nothing : live[:, dims_v],
+        dims_v,
+        _resolve_labels(labels, dims_v),
+        _resolve_bound_span(span, length(dims_v)),
+        bound_index,
+        kind,
+        value,
+    )
+end
+
 function _result_vector(res::Results, key::Symbol)
     haskey(res, key) || throw(KeyError(key))
     values = Float64.(res[key])
@@ -747,6 +866,12 @@ function _samples_by_dimension(samples)
     end
 end
 
+function _bound_result_ndim(res::Results)
+    samples_u = Matrix{Float64}(res.samples_u)
+    ndims(samples_u) == 2 || throw(ArgumentError("samples_u must be two-dimensional"))
+    return size(samples_u, 2)
+end
+
 function _resolve_dims(dims, ndim::Int)
     if isnothing(dims)
         return collect(1:ndim)
@@ -784,6 +909,164 @@ function _resolve_truths(truths, ndim::Int)
         (isnothing(value) || ismissing(value)) ? nothing : Float64(value) for
         value in values
     ]
+end
+
+function _resolve_bound_span(span, ndim::Int)
+    isnothing(span) && return nothing
+    values = collect(span)
+    length(values) == ndim ||
+        throw(DimensionMismatch("span length $(length(values)) != dimension count $ndim"))
+    out = Vector{Tuple{Float64, Float64}}(undef, ndim)
+    for i in eachindex(values)
+        vals = Float64.(collect(values[i]))
+        length(vals) == 2 ||
+            throw(ArgumentError("bound plotting spans must be length-2 bounds"))
+        out[i] = (vals[1], vals[2])
+    end
+    return out
+end
+
+function _prepare_bound_draws(
+    res::Results;
+    it,
+    idx,
+    prior_transform,
+    periodic,
+    reflective,
+    ndraws::Integer,
+    show_live::Bool,
+    rng::AbstractRNG,
+)
+    ndraws > 0 || throw(ArgumentError("ndraws must be positive"))
+    bound, bound_index, kind, value = _select_result_bound(res; it, idx)
+    draw_bound = deepcopy(bound)
+    live_u = if show_live || draw_bound isa Union{RadFriends, SupFriends}
+        _reconstruct_static_live_u(res, kind, value)
+    else
+        nothing
+    end
+    if draw_bound isa Union{RadFriends, SupFriends}
+        draw_bound.ctrs = live_u[:, 1:draw_bound.ndim]
+    end
+    draws_u = samples(draw_bound, ndraws; rng)
+    draws = _project_bound_samples(
+        draws_u, prior_transform, periodic, reflective, draw_bound.ndim
+    )
+    live = if show_live
+        _project_bound_samples(live_u, prior_transform, periodic, reflective, draw_bound.ndim)
+    else
+        nothing
+    end
+    return draws, live, bound_index, kind, value
+end
+
+function _select_result_bound(res::Results; it, idx)
+    (isnothing(it) ⊻ isnothing(idx)) ||
+        throw(ArgumentError("specify exactly one of it or idx"))
+    haskey(res, :bound) || throw(ArgumentError("no bounds were saved in the results"))
+    bounds = collect(res.bound)
+    isempty(bounds) && throw(ArgumentError("results contain no saved bounds"))
+    nsamps = size(Matrix{Float64}(res.samples_u), 1)
+    if !isnothing(it)
+        it_i = Int(it)
+        1 <= it_i <= nsamps || throw(BoundsError("iteration index $it_i outside 1:$nsamps"))
+        haskey(res, :bound_iter) || throw(
+            ArgumentError(
+                "cannot reconstruct the bound at an iteration without bound_iter"
+            ),
+        )
+        raw = it_i == 1 ? 0 : Int(res.bound_iter[it_i])
+        bound_index = _saved_bound_to_index(raw, length(bounds))
+        return bounds[bound_index], bound_index, :it, it_i
+    else
+        idx_i = Int(idx)
+        1 <= idx_i <= nsamps || throw(BoundsError("sample index $idx_i outside 1:$nsamps"))
+        haskey(res, :boundidx) || throw(
+            ArgumentError("cannot reconstruct the bound for a sample without boundidx")
+        )
+        raw = Int(res.boundidx[idx_i])
+        bound_index = _saved_bound_to_index(raw, length(bounds))
+        return bounds[bound_index], bound_index, :idx, idx_i
+    end
+end
+
+function _saved_bound_to_index(saved::Int, nbounds::Int)
+    idx = saved + 1
+    1 <= idx <= nbounds ||
+        throw(BoundsError("saved bound index $saved outside 0:$(nbounds - 1)"))
+    return idx
+end
+
+function _reconstruct_static_live_u(res::Results, kind::Symbol, value::Int)
+    haskey(res, :nlive) || throw(
+        ArgumentError("live point reconstruction for dynamic results is not implemented"),
+    )
+    haskey(res, :samples_id) ||
+        throw(ArgumentError("cannot reconstruct live points without samples_id"))
+    samples_u = Matrix{Float64}(res.samples_u)
+    samples_id = Int.(res.samples_id)
+    nlive = Int(res.nlive)
+    niter = Int(res.niter)
+    nsamps, ndim = size(samples_u)
+    nsamps - niter == nlive || throw(
+        ArgumentError(
+            "cannot reconstruct live points unless final live points are included"
+        ),
+    )
+    length(samples_id) == nsamps || throw(
+        DimensionMismatch(
+            "samples_id length $(length(samples_id)) != sample length $nsamps"
+        ),
+    )
+    live_u = Matrix{Float64}(undef, nlive, ndim)
+    for row in (nsamps - nlive + 1):nsamps
+        id = samples_id[row]
+        1 <= id <= nlive || throw(BoundsError("samples_id $id outside 1:$nlive"))
+        live_u[id, :] .= samples_u[row, :]
+    end
+    it_i = kind === :it ? value : _sample_iteration_for_live_reconstruction(res, value)
+    1 <= it_i <= niter || throw(BoundsError("iteration index $it_i outside 1:$niter"))
+    for row in reverse((it_i + 1):niter)
+        id = samples_id[row]
+        1 <= id <= nlive || throw(BoundsError("samples_id $id outside 1:$nlive"))
+        live_u[id, :] .= samples_u[row, :]
+    end
+    return live_u
+end
+
+function _sample_iteration_for_live_reconstruction(res::Results, idx::Int)
+    haskey(res, :samples_it) ||
+        throw(ArgumentError("cannot reconstruct live points for idx without samples_it"))
+    return Int(res.samples_it[idx])
+end
+
+function _project_bound_samples(
+    samples_u::AbstractMatrix{<:Real},
+    prior_transform,
+    periodic,
+    reflective,
+    bound_ndim::Int,
+)
+    samples_m = Matrix{Float64}(samples_u)
+    if isnothing(prior_transform)
+        return samples_m
+    end
+    nonbounded = get_nonbounded(bound_ndim, periodic, reflective)
+    rows = findall(
+        row -> unitcheck(view(samples_m, row, 1:bound_ndim); nonbounded), axes(samples_m, 1)
+    )
+    out = Matrix{Float64}(undef, length(rows), bound_ndim)
+    for (j, row) in enumerate(rows)
+        transformed = prior_transform(vec(samples_m[row, :]))
+        values = Float64.(collect(transformed))
+        length(values) >= bound_ndim || throw(
+            DimensionMismatch(
+                "prior_transform output length $(length(values)) < bound ndim $bound_ndim",
+            ),
+        )
+        out[j, :] .= values[1:bound_ndim]
+    end
+    return out
 end
 
 function _resolve_posterior_span(span, samples, weights; default=1.0)
@@ -1033,6 +1316,61 @@ end
                     hist.xcenters, hist.ycenters, transpose(hist.density)
                 end
             end
+        end
+    end
+end
+
+@recipe function f(data::BoundPlotData)
+    legend --> false
+    seriestype --> :scatter
+    xguide --> data.labels[1]
+    yguide --> data.labels[2]
+    if !isnothing(data.span)
+        xlims --> data.span[1]
+        ylims --> data.span[2]
+    end
+    @series begin
+        seriestype := :scatter
+        data.draws[:, 1], data.draws[:, 2]
+    end
+    if !isnothing(data.live)
+        @series begin
+            seriestype := :scatter
+            markercolor := :darkviolet
+            data.live[:, 1], data.live[:, 2]
+        end
+    end
+end
+
+@recipe function f(data::CornerBoundData)
+    ndim = size(data.draws, 2)
+    layout --> (ndim - 1, ndim - 1)
+    legend --> false
+    series_count = 0
+    for i in 2:ndim, j in 1:(ndim - 1)
+        if j < i
+            series_count += 1
+            @series begin
+                subplot := series_count
+                seriestype := :scatter
+                xguide := data.labels[j]
+                yguide := data.labels[i]
+                if !isnothing(data.span)
+                    xlims := data.span[j]
+                    ylims := data.span[i]
+                end
+                data.draws[:, j], data.draws[:, i]
+            end
+            if !isnothing(data.live)
+                @series begin
+                    subplot := series_count
+                    seriestype := :scatter
+                    markercolor := :darkviolet
+                    data.live[:, j], data.live[:, i]
+                end
+            end
+        elseif j < ndim
+            series_count += 1
         end
     end
 end
