@@ -12,7 +12,7 @@ Statuses:
 
 | Python symbol | Julia symbol | Grade | Status | Julia test file | Python fixture file | Notes |
 | --- | --- | --- | --- | --- | --- | --- |
-| `dynesty.NestedSampler` | `NestedSampler` | A | implemented | `test/test_static_sampler.jl` | statistical/invariant | Public static sampler API with Julia-native mutating `run_nested!`, result extraction, blobs, bounds, and checkpoint restore. |
+| `dynesty.NestedSampler` | `NestedSampler` | A | implemented | `test/test_static_sampler.jl` | statistical/invariant | Public static sampler API with Julia-native mutating `run_nested!`, result extraction, blobs, bounds, checkpoint restore, and progress callback plumbing. |
 | `dynesty.DynamicNestedSampler` | `DynamicNestedSampler` | A | planned | `test/test_dynamic_sampler.jl` | planned | Public dynamic sampler API. |
 | `dynesty.bounding.Bound` | `AbstractBound` | B | planned | `test/test_bounding_unitcube_ellipsoid.jl` | planned | Julia abstract interface replacement. |
 | `dynesty.bounding.UnitCube` | `UnitCube` | A | implemented | `test/test_bounding_unitcube_ellipsoid.jl` | `test/reference/python/fixtures/bounding_core.json` | Unit-cube bound. |
@@ -79,16 +79,16 @@ Statuses:
 | `dynesty.utils.LoglOutput` | `LoglOutput` | A | implemented | `test/test_utils.jl` | `test/reference/python/fixtures/utils_core.json` | Likelihood output with optional blob. |
 | `dynesty.utils.LogLikelihood` | `LogLikelihood` | A | implemented | `test/test_utils.jl` | not needed | Callable wrapper implemented; HDF5 history flushing is extension-backed. |
 | `dynesty.utils.RunRecord` | `RunRecord` | B | implemented | `test/test_results.jl` | not needed | Run accumulation. |
-| `dynesty.utils.DelayTimer` | `DelayTimer` | C | planned | `test/test_utils.jl` | not needed | Progress-print helper. |
+| `dynesty.utils.DelayTimer` | `DelayTimer` | C | implemented | `test/test_utils.jl` | not needed | Progress/checkpoint delay helper. |
 | `dynesty.utils._update_tqdm_eta_from_dlogz` | progress metadata | C | replacement | `test/test_utils.jl` | not needed | TQDM-specific behavior omitted. |
-| `dynesty.utils.print_fn` | `print_fn` | C | planned | `test/test_utils.jl` | not needed | Display helper. |
-| `dynesty.utils.get_print_fn_args` | `get_print_fn_args` | C | planned | `test/test_utils.jl` | not needed | Display helper. |
+| `dynesty.utils.print_fn` | `print_fn` | C | implemented | `test/test_utils.jl`, `test/test_static_sampler.jl` | not needed | Julia IO display helper. |
+| `dynesty.utils.get_print_fn_args` | `get_print_fn_args` / `PrintFnArgs` | C | implemented | `test/test_utils.jl` | not needed | Display string builder. |
 | `dynesty.utils.print_fn_tqdm` | progress backend | C | replacement | `test/test_utils.jl` | not needed | TQDM-specific behavior replaced. |
-| `dynesty.utils.print_fn_fallback` | `print_fn_fallback` | C | planned | `test/test_utils.jl` | not needed | Display helper. |
+| `dynesty.utils.print_fn_fallback` | `print_fn_fallback` | C | implemented | `test/test_utils.jl` | not needed | Console/IO display helper. |
 | `dynesty.utils.Results` | `Results` | A | implemented | `test/test_results.jl`, `test/test_results_postprocess.jl` | `test/reference/python/fixtures/results_postprocess.json` | Public results container with Julia `blobs` plus compatibility aliases for Python `blob`, `samples_bound`, and `batch`. |
 | `dynesty.utils.results_substitute` | `results_substitute` | B | implemented | `test/test_results.jl`, `test/test_results_postprocess.jl` | `test/reference/python/fixtures/results_postprocess.json` | Results replacement helper; missing replacement keys are ignored like Python. |
 | `dynesty.utils.get_nonbounded` | `get_nonbounded` | B | implemented | `test/test_utils.jl` | `test/reference/python/fixtures/utils_core.json` | Bound-type helper; Julia uses 1-based indices and fixtures record Python/Julia pairs. |
-| `dynesty.utils.get_print_func` | `get_print_func` | C | planned | `test/test_utils.jl` | not needed | Display helper. |
+| `dynesty.utils.get_print_func` | `get_print_func` | C | implemented | `test/test_utils.jl`, `test/test_static_sampler.jl` | not needed | Julia callback selection helper; tqdm backend intentionally replaced. |
 | `dynesty.utils.get_random_generator` | `get_random_generator` | B | implemented | `test/test_utils.jl` | not needed | Julia-native RNG helper; existing RNGs are preserved and integer seeds create deterministic Julia RNGs. |
 | `dynesty.utils.get_seed_sequence` | `task_seeds` | A | implemented | `test/test_parallel.jl` | not needed | Julia-native deterministic seeds; no cross-language same-seed promise. |
 | `dynesty.utils.get_neff_from_logwt` | `get_neff_from_logwt` | A | implemented | `test/test_utils.jl` | `test/reference/python/fixtures/utils_core.json` | Effective sample size. |

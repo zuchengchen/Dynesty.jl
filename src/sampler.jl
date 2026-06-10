@@ -876,6 +876,7 @@ function run_nested!(
     checkpoint_every=nothing,
     resume::Bool=false,
     print_progress::Bool=false,
+    print_func=nothing,
     kwargs...,
 )
     isempty(kwargs) ||
@@ -896,6 +897,7 @@ function run_nested!(
     checkpoint_interval = isnothing(checkpoint_every) ? Inf : Float64(checkpoint_every)
     checkpoint_interval > 0 || throw(ArgumentError("checkpoint_every must be positive"))
     last_checkpoint_time = time()
+    _, progress_callback = get_print_func(print_func, print_progress)
     while true
         h, logz, logzvar, logvol, loglstar = state
         delta = _delta_logz(sampler.live_logl, logvol, logz)
@@ -908,6 +910,29 @@ function run_nested!(
         stop && break
         state = _run_iteration!(sampler, state; logl_max)
         local_steps += 1
+        if print_progress
+            h_new, logz_new, logzvar_new, logvol_new, loglstar_new = state
+            progress_callback(
+                (;
+                    loglstar=loglstar_new,
+                    logz=logz_new,
+                    delta_logz=_delta_logz(sampler.live_logl, logvol_new, logz_new),
+                    logzvar=logzvar_new,
+                    bounditer=sampler.unit_cube_sampling ? 0 : sampler.nbound - 1,
+                    nc=if isempty(sampler.saved_run[:nc])
+                        0
+                    else
+                        Int(last(sampler.saved_run[:nc]))
+                    end,
+                    eff=sampler.eff,
+                ),
+                sampler.it,
+                sampler.ncall;
+                dlogz=dlogz_eff,
+                logl_max,
+            )
+            _ = h_new
+        end
         if !isnothing(checkpoint_file) &&
             time() - last_checkpoint_time >= checkpoint_interval
             checkpoint!(sampler, checkpoint_file)
@@ -919,7 +944,6 @@ function run_nested!(
     if !isnothing(checkpoint_file)
         checkpoint!(sampler, checkpoint_file)
     end
-    _ = print_progress
     return sampler
 end
 

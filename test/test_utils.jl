@@ -149,3 +149,41 @@ end
     @test stepped_fixture.logzvar ≈ progress["logzvar"] rtol = progress["rtol"] atol = progress["atol"]
     @test stepped_fixture.h ≈ progress["h"] rtol = progress["rtol"] atol = progress["atol"]
 end
+
+@testset "Progress display helpers" begin
+    timer = DelayTimer(2.0; now=10.0)
+    @test !is_time!(timer; now=11.0)
+    @test is_time!(timer; now=12.1)
+    @test timer.last_time == 12.1
+    @test_throws ArgumentError DelayTimer(-1)
+
+    itresult = (;
+        loglstar=-3.25,
+        logz=-1.75,
+        delta_logz=0.42,
+        logzvar=0.09,
+        bounditer=2,
+        nc=7,
+        eff=12.3456,
+    )
+    args = get_print_fn_args(itresult, 14, 99; dlogz=0.1, logl_min=-5.0, logl_max=1.0)
+    @test args isa PrintFnArgs
+    @test args.niter == 14
+    @test any(contains("bound: 2"), args.long_str)
+    @test any(contains("eff(%): 12.346"), args.long_str)
+    @test any(contains("dlogz:"), args.long_str)
+
+    io = IOBuffer()
+    line = print_fn_fallback(itresult, 14, 99; dlogz=0.1, io, columns=200)
+    @test String(take!(io)) == "\r" * line
+    @test contains(line, "iter: 14")
+    @test contains(line, "ncall: 99")
+
+    _, default_cb = get_print_func(nothing, true; io=IOBuffer())
+    @test default_cb isa Function
+    called = Ref(false)
+    custom = (args...; kwargs...) -> (called[] = true)
+    _, custom_cb = get_print_func(custom, false)
+    custom_cb(itresult, 1, 2)
+    @test called[]
+end

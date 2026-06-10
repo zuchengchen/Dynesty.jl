@@ -76,6 +76,38 @@ end
         exp.(res.logwt .- res.logz[end]) ./ sum(exp.(res.logwt .- res.logz[end]))
 end
 
+@testset "Static sampler progress callback" begin
+    sampler = NestedSampler(
+        static_loglike_gaussian,
+        static_prior_identity,
+        2;
+        nlive=20,
+        bound=:none,
+        sample=:unif,
+        rng=MersenneTwister(22),
+    )
+    calls = Ref(0)
+    seen = Ref{Any}(nothing)
+    callback = function (itresult, niter, ncall; kwargs...)
+        calls[] += 1
+        seen[] = (itresult=itresult, niter=niter, ncall=ncall, kwargs=kwargs)
+        return nothing
+    end
+    run_nested!(
+        sampler;
+        maxiter=3,
+        dlogz=0.0,
+        add_live=false,
+        print_progress=true,
+        print_func=callback,
+    )
+    @test calls[] == 3
+    @test seen[].niter == sampler.it
+    @test seen[].ncall == sampler.ncall
+    @test haskey(Dict(seen[].kwargs), :dlogz)
+    @test isfinite(seen[].itresult.logz)
+end
+
 @testset "Static sampler bounds, blobs, and checkpoint restore" begin
     blob_loglike(v) = (static_loglike_gaussian(v), (radius=norm(v .- 0.5), first=v[1]))
     sampler = NestedSampler(

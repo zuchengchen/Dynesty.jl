@@ -1,9 +1,195 @@
 using LinearAlgebra
+using Printf
 using Random
 using SpecialFunctions
 using Statistics
 
 const SQRTEPS = sqrt(eps(Float64))
+
+"""
+    DelayTimer(delay; now=time())
+
+Small wall-clock timer used to decide whether a delayed action, such as a
+checkpoint or progress update, should run.
+"""
+mutable struct DelayTimer
+    delay::Float64
+    last_time::Float64
+end
+
+function DelayTimer(delay::Real; now::Real=time())
+    delay >= 0 || throw(ArgumentError("delay must be nonnegative; got $delay"))
+    return DelayTimer(Float64(delay), Float64(now))
+end
+
+function is_time!(timer::DelayTimer; now::Real=time())
+    current = Float64(now)
+    if current - timer.last_time > timer.delay
+        timer.last_time = current
+        return true
+    end
+    return false
+end
+
+is_time(timer::DelayTimer; now::Real=time()) = is_time!(timer; now)
+
+struct PrintFnArgs
+    niter::Int
+    short_str::Vector{String}
+    mid_str::Vector{String}
+    long_str::Vector{String}
+end
+
+function _progress_get(record, key::Symbol)
+    if record isa AbstractDict
+        haskey(record, key) && return record[key]
+        haskey(record, String(key)) && return record[String(key)]
+    end
+    return getproperty(record, key)
+end
+
+function _finite_or(value::Real, threshold::Real, replacement::Real, cmp)
+    vf = Float64(value)
+    return cmp(vf, Float64(threshold)) ? Float64(replacement) : vf
+end
+
+"""
+    get_print_fn_args(itresult, niter, ncall; ...)
+
+Build backend-neutral progress/status strings from a sampler iteration result.
+The returned [`PrintFnArgs`](@ref) mirrors Python dynesty's short, medium, and
+long status variants.
+"""
+function get_print_fn_args(
+    itresult,
+    niter::Integer,
+    ncall::Integer;
+    add_live_it=nothing,
+    dlogz=nothing,
+    stop_val=nothing,
+    nbatch=nothing,
+    logl_min::Real=(-Inf),
+    logl_max::Real=Inf,
+)
+    loglstar_raw = Float64(_progress_get(itresult, :loglstar))
+    logz_raw = Float64(_progress_get(itresult, :logz))
+    delta_logz_raw = Float64(_progress_get(itresult, :delta_logz))
+    logzvar = Float64(_progress_get(itresult, :logzvar))
+    loglstar = _finite_or(loglstar_raw, -1.0e6, -Inf, <=)
+    logz = _finite_or(logz_raw, -1.0e6, -Inf, <=)
+    delta_logz = _finite_or(delta_logz_raw, 1.0e6, Inf, >)
+    logzerr = 0.0 <= logzvar <= 1.0e6 ? sqrt(logzvar) : NaN
+
+    long_str = String[]
+    short_str = String[]
+    if !isnothing(add_live_it)
+        live = @sprintf("+%d", Int(add_live_it))
+        push!(long_str, live)
+        push!(short_str, live)
+    end
+    !isnothing(nbatch) && push!(long_str, @sprintf("batch: %d", Int(nbatch)))
+    push!(long_str, @sprintf("bound: %d", Int(_progress_get(itresult, :bounditer))))
+    push!(long_str, @sprintf("nc: %d", Int(_progress_get(itresult, :nc))))
+    push!(long_str, @sprintf("ncall: %d", Int(ncall)))
+    eff_str = @sprintf("eff(%%): %6.3f", Float64(_progress_get(itresult, :eff)))
+    push!(long_str, eff_str)
+    push!(short_str, eff_str)
+
+    long_logl = if isfinite(logl_min)
+        @sprintf("loglstar: %6.3f < %6.3f", Float64(logl_min), loglstar)
+    else
+        @sprintf("loglstar: %6.3f", loglstar)
+    end
+    short_logl = if isfinite(logl_min)
+        @sprintf("logl*: %6.1f<%6.1f", Float64(logl_min), loglstar)
+    else
+        @sprintf("logl*: %6.1f", loglstar)
+    end
+    if isfinite(logl_max)
+        long_logl *= @sprintf(" < %6.3f", Float64(logl_max))
+        short_logl *= @sprintf("<%6.1f", Float64(logl_max))
+    end
+    push!(long_str, long_logl)
+    push!(short_str, short_logl)
+
+    long_logz = @sprintf("logz: %6.3f", logz)
+    short_logz = @sprintf("logz: %6.1f", logz)
+    if !isnan(logzerr)
+        long_logz *= @sprintf(" +/- %6.3f", logzerr)
+        short_logz *= @sprintf("+/-%.1f", logzerr)
+    end
+    push!(long_str, long_logz)
+    push!(short_str, short_logz)
+
+    show_dlogz =
+        !isnothing(dlogz) && (isnothing(nbatch) || Int(nbatch) == 0 || isnothing(stop_val))
+    if show_dlogz
+        long_tail = @sprintf("dlogz: %6.3f > %6.3f", delta_logz, Float64(dlogz))
+        mid_tail = @sprintf("dlogz: %6.1f>%6.1f", delta_logz, Float64(dlogz))
+    else
+        stop = isnothing(stop_val) ? NaN : Float64(stop_val)
+        long_tail = @sprintf("stop: %6.3f", stop)
+        mid_tail = @sprintf("stop: %6.3f", stop)
+    end
+    push!(long_str, long_tail)
+    mid_str = vcat(short_str, [mid_tail])
+    return PrintFnArgs(Int(niter), short_str, mid_str, long_str)
+end
+
+function _terminal_columns(io::IO)
+    try
+        return displaysize(io)[2]
+    catch
+        return 200
+    end
+end
+
+"""
+    print_fn_fallback(itresult, niter, ncall; io=stderr, columns=nothing, ...)
+
+Write one progress/status line to `io` and return the emitted line.
+"""
+function print_fn_fallback(
+    itresult, niter::Integer, ncall::Integer; io::IO=stderr, columns=nothing, kwargs...
+)
+    args = get_print_fn_args(itresult, niter, ncall; kwargs...)
+    long_str = join(vcat([@sprintf("iter: %d", args.niter)], args.long_str), " | ")
+    mid_str = join(args.mid_str, " | ")
+    short_str = join(args.short_str, "|")
+    width = isnothing(columns) ? _terminal_columns(io) : Int(columns)
+    line = if width > length(long_str)
+        long_str
+    elseif width > length(mid_str)
+        mid_str
+    else
+        short_str
+    end
+    print(io, "\r", line)
+    return line
+end
+
+print_fn(itresult, niter::Integer, ncall::Integer; pbar=nothing, kwargs...) =
+    print_fn_fallback(itresult, niter, ncall; kwargs...)
+
+"""
+    get_print_func(print_func=nothing, print_progress=true; io=stderr)
+
+Return `(progress_backend, callback)` for sampler progress display. The backend
+is currently `nothing`; tqdm-style progress bars are intentionally replaced by a
+Julia IO callback.
+"""
+function get_print_func(
+    print_func=nothing, print_progress::Bool=true; initial=0, io::IO=stderr
+)
+    _ = (print_progress, initial)
+    callback = if isnothing(print_func)
+        (itresult, niter, ncall; kwargs...) ->
+            print_fn(itresult, niter, ncall; io=io, kwargs...)
+    else
+        print_func
+    end
+    return nothing, callback
+end
 
 """
     LoglOutput(logl[, blob])
