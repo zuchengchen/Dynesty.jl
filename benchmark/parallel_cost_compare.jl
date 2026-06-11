@@ -508,42 +508,78 @@ function metadata_paths(run_dir::String, implementation::String)
     )
 end
 
-function maybe_plot_run(cfg::RunConfig, row::Dict{String, Any})
-    plot_summary = joinpath(String(row["run_dir"]), "plot_summary.json")
+function maybe_plot_pair(
+    cfg::RunConfig,
+    julia_row::Dict{String, Any},
+    python_row::Dict{String, Any},
+)
+    cost = String(julia_row["cost"])
+    repeat = Int(julia_row["repeat"])
+    plot_summary = joinpath(
+        cfg.output_dir,
+        "plots",
+        "corner_$(cost)_repeat$(repeat)_julia_vs_python_summary.json",
+    )
     plot_png = joinpath(
         cfg.output_dir,
         "plots",
-        "corner_$(row["cost"])_$(row["implementation"])_repeat$(row["repeat"]).png",
+        "corner_$(cost)_repeat$(repeat)_julia_vs_python.png",
     )
-    if cfg.skip_plots || row["status"] != "ok" || !isfile(String(row["samples_file"]))
+    julia_samples_file = String(julia_row["samples_file"])
+    python_samples_file = String(python_row["samples_file"])
+    missing_samples = !isfile(julia_samples_file) || !isfile(python_samples_file)
+    pair_failed = julia_row["status"] != "ok" || python_row["status"] != "ok"
+    if cfg.skip_plots || pair_failed || missing_samples
         payload = Dict{String, Any}(
             "status" => cfg.skip_plots ? "skipped" : "failed",
-            "message" => cfg.skip_plots ? "plot generation skipped" : "run did not produce samples",
+            "message" => cfg.skip_plots ? "plot generation skipped" :
+                         pair_failed ? "one or both runs failed" :
+                         "one or both runs did not produce samples",
             "plot_file" => nothing,
             "method" => nothing,
+            "comparison" => "julia_vs_python",
+            "cost" => cost,
+            "repeat" => repeat,
         )
         write_json(plot_summary, payload)
-        return payload
+        return Dict{String, Any}(
+            "cost" => cost,
+            "repeat" => repeat,
+            "comparison" => "julia_vs_python",
+            "status" => payload["status"],
+            "method" => payload["method"],
+            "plot_file" => payload["plot_file"],
+            "message" => payload["message"],
+            "summary_file" => plot_summary,
+            "julia_run_dir" => julia_row["run_dir"],
+            "python_run_dir" => python_row["run_dir"],
+            "julia_samples_file" => julia_samples_file,
+            "python_samples_file" => python_samples_file,
+            "julia_metadata_file" => julia_row["metadata_file"],
+            "python_metadata_file" => python_row["metadata_file"],
+        )
     end
     cmd = [
         cfg.python_exe,
         joinpath(ROOT, "benchmark", "parallel_cost_corner.py"),
-        "--samples",
-        String(row["samples_file"]),
-        "--metadata",
-        String(row["metadata_file"]),
+        "--julia-samples",
+        julia_samples_file,
+        "--julia-metadata",
+        String(julia_row["metadata_file"]),
+        "--python-samples",
+        python_samples_file,
+        "--python-metadata",
+        String(python_row["metadata_file"]),
         "--output-png",
         plot_png,
         "--summary-json",
         plot_summary,
-        "--implementation",
-        String(row["implementation"]),
         "--cost",
-        String(row["cost"]),
+        cost,
         "--repeat",
-        string(row["repeat"]),
+        string(repeat),
         "--title",
-        "$(row["cost"]) $(row["implementation"]) repeat $(row["repeat"])",
+        "$(cost) repeat $(repeat): Julia vs Python posterior",
     ]
     proc = run(Cmd(Cmd(cmd); ignorestatus=true))
     payload = read_json_dict(plot_summary)
@@ -556,7 +592,67 @@ function maybe_plot_run(cfg::RunConfig, row::Dict{String, Any})
         )
         write_json(plot_summary, payload)
     end
-    return payload
+    return Dict{String, Any}(
+        "cost" => cost,
+        "repeat" => repeat,
+        "comparison" => "julia_vs_python",
+        "status" => get(payload, "status", "unknown"),
+        "method" => get(payload, "method", nothing),
+        "plot_file" => get(payload, "plot_file", nothing),
+        "message" => get(payload, "message", ""),
+        "summary_file" => plot_summary,
+        "julia_run_dir" => julia_row["run_dir"],
+        "python_run_dir" => python_row["run_dir"],
+        "julia_samples_file" => julia_samples_file,
+        "python_samples_file" => python_samples_file,
+        "julia_metadata_file" => julia_row["metadata_file"],
+        "python_metadata_file" => python_row["metadata_file"],
+        "julia_nsamples" => julia_row["nsamples"],
+        "python_nsamples" => python_row["nsamples"],
+        "julia_logz" => julia_row["logz"],
+        "python_logz" => python_row["logz"],
+        "julia_logzerr" => julia_row["logzerr"],
+        "python_logzerr" => python_row["logzerr"],
+    )
+end
+
+function refresh_overlay_plots!(
+    cfg::RunConfig,
+    rows::Vector{Dict{String, Any}},
+    plot_rows_by_key::Dict{Tuple{String, Int}, Dict{String, Any}},
+)
+    rows_by_key = Dict{Tuple{String, Int, String}, Dict{String, Any}}()
+    for row in rows
+        key = (String(row["cost"]), Int(row["repeat"]), String(row["implementation"]))
+        rows_by_key[key] = row
+    end
+    for cost in cfg.costs
+        for repeat in 1:cfg.repeats
+            pair_key = (cost, repeat)
+            haskey(plot_rows_by_key, pair_key) && continue
+            julia_row = get(rows_by_key, (cost, repeat, "julia"), nothing)
+            python_row = get(rows_by_key, (cost, repeat, "python"), nothing)
+            (isnothing(julia_row) || isnothing(python_row)) && continue
+            plot_rows_by_key[pair_key] = maybe_plot_pair(cfg, julia_row, python_row)
+        end
+    end
+    return plot_rows_by_key
+end
+
+function ordered_plot_rows(
+    cfg::RunConfig,
+    plot_rows_by_key::Dict{Tuple{String, Int}, Dict{String, Any}},
+)
+    rows = collect(values(plot_rows_by_key))
+    cost_rank = Dict(cost => i for (i, cost) in enumerate(cfg.costs))
+    sort!(
+        rows;
+        by=row -> (
+            get(cost_rank, String(row["cost"]), typemax(Int)),
+            Int(row["repeat"]),
+        ),
+    )
+    return rows
 end
 
 function row_from_run(
@@ -806,13 +902,25 @@ function write_outputs(cfg::RunConfig, rows, plot_rows)
     ]
     plot_columns = [
         "cost",
-        "implementation",
         "repeat",
+        "comparison",
         "status",
         "method",
         "plot_file",
         "message",
         "summary_file",
+        "julia_run_dir",
+        "python_run_dir",
+        "julia_samples_file",
+        "python_samples_file",
+        "julia_metadata_file",
+        "python_metadata_file",
+        "julia_nsamples",
+        "python_nsamples",
+        "julia_logz",
+        "python_logz",
+        "julia_logzerr",
+        "python_logzerr",
     ]
     summary_csv = joinpath(cfg.output_dir, "summary.csv")
     plot_csv = joinpath(cfg.output_dir, "plot_index.csv")
@@ -903,25 +1011,13 @@ function main(args=ARGS)
         @warn "/usr/bin/time is missing; smoke/debug run will record time_unavailable=true and cannot satisfy formal benchmark requirements"
     end
     rows = Dict{String, Any}[]
-    plot_rows = Dict{String, Any}[]
+    plot_rows_by_key = Dict{Tuple{String, Int}, Dict{String, Any}}()
     try
         for item in run_matrix(cfg)
             row = run_one!(cfg, item.cost, item.implementation, item.repeat)
             push!(rows, row)
-            plot_summary = maybe_plot_run(cfg, row)
-            push!(
-                plot_rows,
-                Dict{String, Any}(
-                    "cost" => row["cost"],
-                    "implementation" => row["implementation"],
-                    "repeat" => row["repeat"],
-                    "status" => get(plot_summary, "status", "unknown"),
-                    "method" => get(plot_summary, "method", nothing),
-                    "plot_file" => get(plot_summary, "plot_file", nothing),
-                    "message" => get(plot_summary, "message", ""),
-                    "summary_file" => joinpath(String(row["run_dir"]), "plot_summary.json"),
-                ),
-            )
+            refresh_overlay_plots!(cfg, rows, plot_rows_by_key)
+            plot_rows = ordered_plot_rows(cfg, plot_rows_by_key)
             outputs = write_outputs(cfg, rows, plot_rows)
             @info "Updated benchmark summaries" summary_csv = outputs.summary_csv summary_json = outputs.summary_json
             if row["status"] != "ok"
@@ -929,10 +1025,12 @@ function main(args=ARGS)
             end
         end
     catch err
+        plot_rows = ordered_plot_rows(cfg, plot_rows_by_key)
         outputs = write_outputs(cfg, rows, plot_rows)
         @error "Benchmark stopped before completing all requested runs" error = err summary_json = outputs.summary_json
         rethrow()
     end
+    plot_rows = ordered_plot_rows(cfg, plot_rows_by_key)
     outputs = write_outputs(cfg, rows, plot_rows)
     println("Wrote summary CSV: $(outputs.summary_csv)")
     println("Wrote summary JSON: $(outputs.summary_json)")
