@@ -333,15 +333,14 @@ Completed in this stage:
   `eval`/`include`; they did not fail the bridge check.
 - `git diff --check` passed after formatter normalization.
 
-Still required before a stage commit under the full goal contract:
+Still required before a future full-project completion commit:
 
-- Stage the related deliverables, commit the validated stage, and confirm the
-  worktree is clean afterward.
+- Continue any later feature-gap work from a clean worktree and repeat the
+  validation gates before committing.
 
 ## Commit List
 
-- Pending: this validated stage will be committed after the final status and
-  staged-diff review.
+- `1026552` `Complete Julia-native feature gap pass`
 
 ## Cleanup Log
 
@@ -376,8 +375,8 @@ Still required before a stage commit under the full goal contract:
   `examples/pe_compare_julia.jl` and `examples/pe_compare_python.py`; the
   maintained replacements are `examples/pe_parallel_julia.jl`,
   `examples/pe_parallel_python.py`, and the formal benchmark runners.
-- Kept and will submit `PYTHON_FEATURE_GAP_COMPLETION_GOAL_PROMPT.md` with the
-  audit as the active continuation contract.
+- Submitted `PYTHON_FEATURE_GAP_COMPLETION_GOAL_PROMPT.md` with the audit as
+  the active continuation contract.
 
 ## Current Summary
 
@@ -387,6 +386,5 @@ noisy-likelihood reweighting, and the hyper-pyramid diagnostic are now present
 and smoke-tested. Default package tests, docs build, helper script checks, core
 benchmark smoke, bounded BenchmarkTools suite execution, low-cost formal
 benchmark resume probes, and the exact full formal benchmark commands pass. The
-full Python feature-gap completion goal remains active because final handling
-of the validated stage commit and final clean worktree confirmation are still
-outstanding.
+validated stage is committed, generated artifacts are cleaned, and the
+post-commit worktree check is clean.
