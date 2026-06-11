@@ -97,9 +97,11 @@ function parse_cli(args)
     end
     opts[:nlive_effective] = opts[:quick] ? opts[:quick_nlive] : opts[:nlive]
     opts[:dlogz_effective] = opts[:quick] ? opts[:quick_dlogz] : opts[:dlogz]
+    opts[:proposal_scheduler] = Symbol(opts[:proposal_scheduler])
     Int(opts[:nlive_effective]) > 0 || throw(ArgumentError("nlive must be positive"))
     Int(opts[:queue_size]) > 0 || throw(ArgumentError("queue_size must be positive"))
-    Int(opts[:work_repeats]) >= 0 || throw(ArgumentError("work_repeats must be nonnegative"))
+    Int(opts[:work_repeats]) >= 0 ||
+        throw(ArgumentError("work_repeats must be nonnegative"))
     Float64(opts[:sleep_ms]) >= 0 || throw(ArgumentError("sleep_ms must be nonnegative"))
     return opts
 end
@@ -150,9 +152,7 @@ function run_julia_air_quality_pe(opts)
     sleep_ms = Float64(opts[:sleep_ms])
     reset_air_quality_call_count!()
     direct_calibration = calibrate_air_quality_likelihood(;
-        work_repeats,
-        ntrial=Int(opts[:calibration_trials]),
-        sleep_ms,
+        work_repeats, ntrial=Int(opts[:calibration_trials]), sleep_ms
     )
     loglike = theta -> air_quality_loglikelihood(theta, work_repeats, sleep_ms)
     sampler = NestedSampler(
@@ -165,7 +165,7 @@ function run_julia_air_quality_pe(opts)
         rng=MersenneTwister(Int(opts[:seed])),
         parallel=:threads,
         queue_size=Int(opts[:queue_size]),
-        proposal_scheduler=String(opts[:proposal_scheduler]),
+        proposal_scheduler=opts[:proposal_scheduler],
         enlarge=1.1,
         bootstrap=0,
     )
@@ -226,10 +226,10 @@ function main(args=ARGS)
         "cov" => fit.cov,
         "param_names" => air_quality_parameter_names(),
         "true_theta" => air_quality_truth(),
-        "truth" => air_quality_dataset_metadata(; work_repeats=Int(opts[:work_repeats]))["truth"],
+        "truth" =>
+            air_quality_dataset_metadata(; work_repeats=Int(opts[:work_repeats]))["truth"],
         "dataset" => air_quality_dataset_metadata(;
-            work_repeats=Int(opts[:work_repeats]),
-            sleep_ms=Float64(opts[:sleep_ms]),
+            work_repeats=Int(opts[:work_repeats]), sleep_ms=Float64(opts[:sleep_ms])
         ),
         "environment_variables" => environment_summary(),
         "julia_version" => string(VERSION),

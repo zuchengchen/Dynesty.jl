@@ -16,7 +16,7 @@ from `../dynesty`.
 | --- | --- | --- |
 | A | Public API and core numerical functions | Direct Julia tests and Python fixture cross-checks wherever meaningful |
 | B | Internal helpers that affect algorithm behavior | Direct or indirect Julia tests; fixtures when inputs and outputs are stable |
-| C | Thin wrappers, display, printing, compatibility aliases, plotting helpers, demo/doc helpers | Caller tests, smoke tests, snapshots, or migration-matrix notes |
+| C | Thin wrappers, display, printing, plotting helpers, and demo/doc helpers | Caller tests, smoke tests, snapshots, or migration-matrix notes |
 
 ## Extended Test Flags
 

@@ -30,12 +30,12 @@ dist_parallel_fail(v) = error("distributed likelihood marker")
     @test map_ordered(serial, x -> x^2, [3, 2, 1]) == [9, 4, 1]
     @test_throws ArgumentError SerialMapBackend(queue_size=0)
     @test Dynesty._get_map_backend(:serial, nothing, nothing) isa SerialMapBackend
-    @test Dynesty._get_map_backend("none", nothing, nothing) isa SerialMapBackend
+    @test_throws ArgumentError Dynesty._get_map_backend("none", nothing, nothing)
 
     threaded = ThreadedMapBackend(queue_size=2)
     @test map_ordered(threaded, x -> x + 1, 1:5) == [2, 3, 4, 5, 6]
     @test Dynesty._get_map_backend(:threads, nothing, 2) == threaded
-    @test Dynesty._get_map_backend("threaded", nothing, 2) == threaded
+    @test_throws ArgumentError Dynesty._get_map_backend("threaded", nothing, 2)
 
     distributed = DistributedMapBackend(workers=Int[], queue_size=2)
     @test map_ordered(distributed, x -> 2x, 1:4) == [2, 4, 6, 8]
@@ -54,44 +54,36 @@ dist_parallel_fail(v) = error("distributed likelihood marker")
     @test rng_values1 == rng_values2
 end
 
-@testset "Pool usage policy parsing" begin
-    default_usage = PoolUsage()
-    @test default_usage.initial
-    @test default_usage.prior_transform
-    @test default_usage.loglikelihood
+@testset "Parallel policy parsing" begin
+    default_usage = ParallelPolicy()
+    @test default_usage.initialization
     @test default_usage.proposals
     @test !default_usage.bounds
     @test !default_usage.stopping
-    @test Dynesty._pool_usage_initial(default_usage)
+    @test Dynesty._parallel_policy_initial(default_usage)
 
-    usage = Dynesty._get_pool_usage((initial=false, proposals=false), nothing)
-    @test usage isa PoolUsage
-    @test !usage.initial
+    usage = Dynesty._get_parallel_policy((initialization=false, proposals=false))
+    @test usage isa ParallelPolicy
+    @test !usage.initialization
     @test !usage.proposals
-    @test usage.prior_transform
 
-    use_pool = Dict(
-        "prior_transform" => false,
-        :logl => true,
-        "propose_point" => false,
-        :update_bound => true,
-        "stop_function" => true,
+    policy = Dynesty._get_parallel_policy((
+        initialization=false, proposals=false, bounds=true, stopping=true
+    ))
+    @test policy.proposals == false
+    @test policy.bounds == true
+    @test policy.stopping == true
+    @test !Dynesty._parallel_policy_initial(policy)
+
+    roundtrip = Dynesty._parallel_policy_from_config(
+        Dynesty._parallel_policy_config(policy)
     )
-    compat = Dynesty._get_pool_usage(nothing, use_pool)
-    @test compat.prior_transform == false
-    @test compat.loglikelihood == true
-    @test compat.proposals == false
-    @test compat.bounds == true
-    @test compat.stopping == true
-    @test !Dynesty._pool_usage_initial(compat)
+    @test roundtrip == policy
 
-    roundtrip = Dynesty._pool_usage_from_config(Dynesty._pool_usage_config(compat))
-    @test roundtrip == compat
-
-    @test_throws ArgumentError Dynesty._get_pool_usage(PoolUsage(), Dict(:proposals => true))
-    @test_throws ArgumentError Dynesty._get_pool_usage((unknown=true,), nothing)
-    @test_throws ArgumentError Dynesty._get_pool_usage((proposals=1,), nothing)
-    @test_throws ArgumentError Dynesty._get_pool_usage(["proposals"], nothing)
+    @test_throws ArgumentError Dynesty._get_parallel_policy((unknown=true,))
+    @test_throws ArgumentError Dynesty._get_parallel_policy((proposals=1,))
+    @test_throws ArgumentError Dynesty._get_parallel_policy(Dict("proposals" => true))
+    @test_throws ArgumentError Dynesty._get_parallel_policy(["proposals"])
 end
 
 @testset "Map errors include context" begin
@@ -132,7 +124,7 @@ end
 
 @testset "Proposal scheduler parsing" begin
     @test Dynesty._proposal_scheduler_symbol(:batch) == :batch
-    @test Dynesty._proposal_scheduler_symbol("async") == :async
+    @test_throws ArgumentError Dynesty._proposal_scheduler_symbol("async")
     @test Dynesty._proposal_scheduler_symbol(:auto) == :auto
     @test_throws ArgumentError Dynesty._proposal_scheduler_symbol(:streaming)
 end

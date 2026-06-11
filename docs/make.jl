@@ -37,6 +37,7 @@ makedocs(;
             "Parallelism" => "api/parallel.md",
         ],
         "Migration Notes" => [
+            "Migration Guide" => "migration_guide.md",
             "Examples" => "examples.md",
             "Compatibility" => "compatibility.md",
             "Persistence" => "persistence.md",

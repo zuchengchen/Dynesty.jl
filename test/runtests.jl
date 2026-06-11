@@ -4,15 +4,16 @@ using Test
 @testset "Dynesty package skeleton" begin
     @test Dynesty isa Module
     @test get_citations() isa String
-    @test citations() == get_citations()
     @test occursin("Speagle", get_citations())
     @test occursin("Skilling", get_citations())
     @test get_citations(format=:records) isa Tuple
     @test occursin("@article", get_citations(format=:bibtex))
     @test_throws ArgumentError get_citations(format=:unknown)
+    @test !isdefined(Dynesty, :citations)
 end
 
 include("test_utils.jl")
+include("test_api_surface.jl")
 include("test_results.jl")
 include("test_results_postprocess.jl")
 include("test_persistence.jl")

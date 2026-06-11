@@ -15,8 +15,7 @@ sampler = NestedSampler(
 ```
 
 Use `parallel=:serial`, `parallel=:threads`/`:threaded`, or
-`parallel=:distributed`; the matching strings (`"serial"`, `"threads"`,
-`"threaded"`, and `"distributed"`) are accepted for Python-adjacent workflows.
+`parallel=:distributed`. These options are Symbols; strings are rejected.
 Advanced users can pass an explicit backend:
 
 ```julia
@@ -30,7 +29,7 @@ sampler = NestedSampler(
 
 When `map_backend` is explicit, configure `queue_size` on the backend itself;
 passing both `map_backend` and `queue_size` raises `ArgumentError`. The sampler
-backend is used according to a [`PoolUsage`](@ref) policy. By default, the
+backend is used according to a [`ParallelPolicy`](@ref) policy. By default, the
 backend is enabled for initial live-point prior-transform/likelihood
 evaluation and for the proposal/evolve queue. Bound updates and dynamic
 stopping-function evaluation remain serial unless opted in by policy.
@@ -42,27 +41,13 @@ sampler = NestedSampler(
     ndim;
     parallel=:threads,
     queue_size=4,
-    pool_usage=PoolUsage(proposals=true, bounds=false, stopping=false),
+    parallel_policy=ParallelPolicy(proposals=true, bounds=false, stopping=false),
 )
 ```
 
-For Python-adjacent migration code, `use_pool` dictionaries or named tuples are
-accepted and parsed into `PoolUsage`:
-
-```julia
-sampler = NestedSampler(
-    loglikelihood,
-    prior_transform,
-    ndim;
-    parallel=:threads,
-    queue_size=4,
-    use_pool=Dict("propose_point" => true, "update_bound" => false),
-)
-```
-
-`use_pool` recognizes `prior_transform`, `loglikelihood`/`logl`,
-`propose_point`/`proposal`, `update_bound`, and `stop_function`. Passing both
-`pool_usage` and `use_pool` raises `ArgumentError`.
+`ParallelPolicy` accepts Julia-native field names: `initialization`,
+`proposals`, `bounds`, and `stopping`. Python `use_pool` dictionaries are not
+part of the Dynesty.jl API.
 
 When `queue_size > 1` and proposal use is enabled, `run_nested!` fills a
 proposal/evolve queue through the backend, with one independent task RNG per
@@ -83,27 +68,26 @@ serial, distributed, and custom backends. Async tasks are not serialized in
 checkpoints; checkpointing drains outstanding threaded tasks before writing the
 ordinary sampler snapshot.
 
-Bound refreshes remain serial by default. With `pool_usage=PoolUsage(bounds=true)`
-or `use_pool=Dict("update_bound" => true)`, built-in ellipsoid and friends
+Bound refreshes remain serial by default. With
+`parallel_policy=ParallelPolicy(bounds=true)`, built-in ellipsoid and friends
 bounds can use the configured backend for bootstrap tasks when `bootstrap > 0`.
 The bound object itself is still mutated only on the main sampler task; backend
 workers receive point-matrix snapshots and deterministic per-task RNGs. Custom
 bounds and non-bootstrap bound refreshes continue to run serially.
 
 Dynamic stopping checks also remain serial by default. With
-`pool_usage=PoolUsage(stopping=true)` or
-`use_pool=Dict("stop_function" => true)`, the default
+`parallel_policy=ParallelPolicy(stopping=true)`, the default
 [`stopping_function`](@ref) uses the configured backend for its Monte Carlo
 error realizations when `n_mc > 1`. The results object is passed read-only to
 each task, and custom stop functions keep the existing serial call path unless
 they explicitly implement their own mapping behavior.
 
 Reproducibility is guaranteed for the same Julia seed, backend kind, backend
-configuration, thread count, `queue_size`, `PoolUsage`, and
+configuration, thread count, `queue_size`, `ParallelPolicy`, and
 `proposal_scheduler`. Trajectories are
 not required to match across backends or with Python dynesty, and changing
-`queue_size`, pool usage, or scheduler can change accepted proposals.
-Checkpoints save backend configuration, pool usage policy, proposal scheduler,
+`queue_size`, parallel policy, or scheduler can change accepted proposals.
+Checkpoints save backend configuration, parallel policy, proposal scheduler,
 and proposal queue counters rather than worker process objects; restored
 distributed backends only use worker IDs that are live in the current Julia
 session and otherwise fall back to serial ordered-map execution.
@@ -186,7 +170,7 @@ set `DYNESTY_RUN_DISTRIBUTED_TESTS=true` before running the test suite.
 map_ordered
 map_with_rng
 task_seeds
-PoolUsage
+ParallelPolicy
 ParallelStats
 ```
 

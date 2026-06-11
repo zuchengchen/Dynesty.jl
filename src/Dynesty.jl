@@ -4,7 +4,6 @@ import JSON3
 
 export DelayTimer,
     DistributedMapBackend,
-    DynamicNestedSampler,
     DynamicSampler,
     DynamicSamplerBaseDone,
     DynamicSamplerBatchDone,
@@ -22,7 +21,7 @@ export DelayTimer,
     MultiEllipsoid,
     NestedSampler,
     ParallelStats,
-    PoolUsage,
+    ParallelPolicy,
     PrintFnArgs,
     RadFriends,
     Results,
@@ -49,7 +48,6 @@ export DelayTimer,
     checkpoint!,
     check_result_static,
     check_span,
-    citations,
     CornerPlotData,
     CornerPointsData,
     cornerbound,
@@ -63,7 +61,6 @@ export DelayTimer,
     DynamicBatchFirstPoint,
     DynamicSamplerState,
     _configure_batch_sampler,
-    from_python_indices,
     get_citations,
     get_neff_from_logwt,
     get_nonbounded,
@@ -99,7 +96,6 @@ export DelayTimer,
     results_substitute,
     reweight_run,
     runplot,
-    run_nested,
     run_nested!,
     plot_truth,
     print_fn,
@@ -154,13 +150,6 @@ function get_citations(; format::Symbol=:text)
         )
     end
 end
-
-"""
-    citations()
-
-Compatibility alias for [`get_citations`](@ref).
-"""
-citations() = get_citations()
 
 const _CITATION_RECORDS = (
     (

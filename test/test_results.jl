@@ -39,7 +39,23 @@ end
         samples=[1.0], samples_u=[0.1], samples_id=[1], logl=[0.0], nope=1
     )
 
-    aliased = Results(;
+    native = Results(;
+        samples=res.samples,
+        samples_u=res.samples_u,
+        samples_id=res.samples_id,
+        logl=res.logl,
+        nlive=res.nlive,
+        niter=res.niter,
+        ncall=res.ncall,
+        eff=res.eff,
+        blobs=["a", "b", "c"],
+        boundidx=[0, 1, 1],
+        samples_batch=[0, 0, 1],
+    )
+    @test native.blobs == ["a", "b", "c"]
+    @test native.boundidx == [0, 1, 1]
+    @test native.samples_batch == [0, 0, 1]
+    @test_throws ArgumentError Results(;
         samples=res.samples,
         samples_u=res.samples_u,
         samples_id=res.samples_id,
@@ -49,19 +65,36 @@ end
         ncall=res.ncall,
         eff=res.eff,
         blob=["a", "b", "c"],
+    )
+    @test_throws ArgumentError Results(;
+        samples=res.samples,
+        samples_u=res.samples_u,
+        samples_id=res.samples_id,
+        logl=res.logl,
+        nlive=res.nlive,
+        niter=res.niter,
+        ncall=res.ncall,
+        eff=res.eff,
         samples_bound=[0, 1, 1],
+    )
+    @test_throws ArgumentError Results(;
+        samples=res.samples,
+        samples_u=res.samples_u,
+        samples_id=res.samples_id,
+        logl=res.logl,
+        nlive=res.nlive,
+        niter=res.niter,
+        ncall=res.ncall,
+        eff=res.eff,
         batch=[0, 0, 1],
     )
-    @test aliased.blobs == ["a", "b", "c"]
-    @test aliased.blob == aliased.blobs
-    @test aliased[:blob] == aliased.blobs
-    @test haskey(aliased, :blob)
-    @test aliased.boundidx == [0, 1, 1]
-    @test aliased.samples_bound == aliased.boundidx
-    @test aliased[:samples_bound] == aliased.boundidx
-    @test aliased.samples_batch == [0, 0, 1]
-    @test aliased.batch == aliased.samples_batch
-    @test aliased[:batch] == aliased.samples_batch
+    @test_throws FieldError native.blob
+    @test_throws KeyError native[:blob]
+    @test !haskey(native, :blob)
+    @test_throws FieldError native.samples_bound
+    @test_throws KeyError native[:samples_bound]
+    @test_throws FieldError native.batch
+    @test_throws KeyError native[:batch]
 end
 
 @testset "RunRecord" begin

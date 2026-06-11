@@ -61,7 +61,7 @@ function plotting_bound_results_fixture()
         niter=4,
         bound=bounds,
         bound_iter=[0, 1, 1, 1, 1, 1, 1, 1],
-        samples_bound=[0, 0, 1, 1, 1, 1, 1, 1],
+        boundidx=[0, 0, 1, 1, 1, 1, 1, 1],
     )
 end
 
@@ -301,7 +301,7 @@ end
         niter=res.niter,
         bound=[UnitCube(1)],
         bound_iter=fill(0, length(res.logl)),
-        samples_bound=fill(0, length(res.logl)),
+        boundidx=fill(0, length(res.logl)),
     )
     @test_throws ArgumentError cornerbound(one_dim; idx=1)
     @test_throws ArgumentError boundplot(res, [1, 2])
@@ -336,7 +336,7 @@ end
         logzerr=res.logzerr,
         bound=res.bound,
         bound_iter=res.bound_iter,
-        samples_bound=res.samples_bound,
+        boundidx=res.boundidx,
     )
     dynamic_bound = boundplot(dynamic_res, [1, 2]; idx=1, ndraws=5, rng=MersenneTwister(15))
     @test size(dynamic_bound.draws) == (5, 2)

@@ -6,6 +6,13 @@ using Statistics
 
 const SQRTEPS = sqrt(eps(Float64))
 
+function _rng_from_user(rng; name::AbstractString="rng")
+    isnothing(rng) && return Random.default_rng()
+    rng isa AbstractRNG && return rng
+    rng isa Integer && return MersenneTwister(rng)
+    throw(ArgumentError("$name must be an AbstractRNG or integer seed; got $(typeof(rng))"))
+end
+
 """
     DelayTimer(delay; now=time())
 
@@ -447,8 +454,7 @@ end
     get_nonbounded(ndim, periodic, reflective)
 
 Return a boolean mask where ordinary dimensions are `true` and periodic or
-reflective dimensions are `false`. Indices are 1-based; use
-`from_python_indices` to convert Python dynesty index lists explicitly.
+reflective dimensions are `false`. Indices are Julia 1-based.
 """
 function get_nonbounded(ndim::Integer, periodic=nothing, reflective=nothing)
     ndim_i = Int(ndim)
@@ -739,24 +745,4 @@ function progress_integration(
     dh = h_new - h
     logzvar_new = logzvar + dh * dlogvol
     return (; logwt, logz=logz_new, logzvar=logzvar_new, h=h_new)
-end
-
-"""
-    from_python_indices(indices; ndim)
-
-Explicitly convert Python 0-based dimension indices to Julia 1-based indices.
-"""
-function from_python_indices(indices; ndim::Integer)
-    ndim > 0 || throw(ArgumentError("ndim must be positive; got $ndim"))
-    convert_one(i) = begin
-        ii = Int(i)
-        0 <= ii < ndim ||
-            throw(BoundsError("Python index $ii is outside valid range 0:$(ndim - 1)"))
-        ii + 1
-    end
-    if indices isa Integer
-        return convert_one(indices)
-    else
-        return [convert_one(i) for i in indices]
-    end
 end

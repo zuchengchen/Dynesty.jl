@@ -10,7 +10,8 @@ internal proposal samplers, result post-processing, persistence, parallel map
 backends, backend-neutral plotting data/recipes, smoke-tested examples, and
 Documenter.jl documentation. The source migration is tracked in
 [`docs/migration_matrix.md`](docs/migration_matrix.md), with intentional
-Julia-native differences documented in [`docs/compatibility.md`](docs/compatibility.md).
+Julia-native differences documented in [`docs/compatibility.md`](docs/compatibility.md)
+and migration rewrites in [`docs/migration_guide.md`](docs/migration_guide.md).
 
 ## Installation and Development
 
@@ -28,8 +29,8 @@ benchmark environments resolve their manifests locally.
 ## Quickstart
 
 The public sampler API follows Julia conventions. Mutating operations use `!`
-suffixes, and compatibility aliases such as `run_nested` are available for
-low-cost Python-adjacent workflows.
+suffixes, enum-like options use `Symbol`s, and random seeding goes through the
+`rng` keyword.
 
 ```julia
 using Dynesty
@@ -54,12 +55,11 @@ println(res.logz[end])
 
 ## Dynamic Sampling
 
-Dynamic nested sampling is available through `DynamicNestedSampler`, a public
-alias for `DynamicSampler`. Adaptive batches are driven by `run_nested!` or by
-explicit `add_batch!` calls:
+Dynamic nested sampling is available through `DynamicSampler`. Adaptive batches
+are driven by `run_nested!` or by explicit `add_batch!` calls:
 
 ```julia
-dsampler = DynamicNestedSampler(
+dsampler = DynamicSampler(
     loglikelihood,
     prior_transform,
     2;
@@ -83,10 +83,10 @@ println(dres.logz[end])
 
 ## Results and Persistence
 
-`results(sampler)` returns a stable `Results` object with Python-compatible
-public array shapes: samples are stored as `nsamples x ndim`, and public live
-point views use `nlive x ndim`. Python's `res.blob` field is represented as
-`res.blobs` in Julia.
+`results(sampler)` returns a stable `Results` object. Public array shapes follow
+dynesty workflow conventions: samples are stored as `nsamples x ndim`, and
+public live point views use `nlive x ndim`. Blob metadata is available as
+`res.blobs`.
 
 Persistence uses separate storage paths:
 
@@ -101,8 +101,8 @@ Persistence uses separate storage paths:
 
 ## Parallelism
 
-Julia-native ordered map backends cover the Python `Pool` use case without
-copying its multiprocessing API:
+Julia-native ordered map backends cover parallel evaluation workflows without
+copying Python's multiprocessing API:
 
 - `SerialMapBackend`
 - `ThreadedMapBackend`
@@ -131,9 +131,11 @@ julia --project=. examples/dynamic_nested_sampling.jl
 ```
 
 Additional examples cover an eggbox likelihood, Gaussian shells, a
-high-dimensional Gaussian, and error handling.
+high-dimensional Gaussian, linear regression, an exponential wave with periodic
+parameters, loggamma mixtures, noisy-likelihood reweighting, a hyper-pyramid
+shrinkage check, and error handling.
 
-## Python Compatibility
+## Migration Compatibility
 
 Default tests use committed JSON fixtures generated from the adjacent
 read-only `../dynesty` checkout; they do not call Python live. Fixture
@@ -142,8 +144,11 @@ generation details and tolerance rationale are documented in
 
 Intentional Julia-native differences include 1-based periodic/reflective
 dimension indices, `copy_inputs=false` by default for performance, Julia
-closures instead of Python `logl_args`/`ptform_args` wrappers, and `.jls`/`.jld2`
-persistence rather than pickle archives.
+closures instead of Python `logl_args`/`ptform_args` wrappers, Symbol-only
+enum-like options, `rng` instead of Python random-state aliases, and
+`.jls`/`.jld2` persistence rather than pickle archives.
+See [`docs/migration_guide.md`](docs/migration_guide.md) for concrete rewrite
+patterns.
 
 ## Development Commands
 

@@ -10,9 +10,7 @@ save_sampler
 
 Additional public sampler operations:
 
-- `DynamicNestedSampler`
 - `run_nested!`
-- `run_nested`
 - `add_live_points!`
 - `add_batch!`
 - `combine_runs!`

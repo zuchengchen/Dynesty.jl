@@ -68,8 +68,6 @@ end
     @test get_nonbounded(3, [false, true, false], nothing) == [true, false, true]
     @test_throws ArgumentError get_nonbounded(3, [1], [1])
     @test_throws BoundsError get_nonbounded(3, [0], nothing)
-    @test from_python_indices(nonbounded["periodic_python_0_based"]; ndim=4) ==
-        Vector{Int}(nonbounded["periodic_julia_1_based"])
 
     rng = get_random_generator(123)
     @test rng isa MersenneTwister
@@ -119,8 +117,7 @@ end
     @test_throws ArgumentError quantile([1.0], 1.5)
 
     @test logvol_prefactor(2) ≈ log(pi)
-    @test from_python_indices([0, 2]; ndim=3) == [1, 3]
-    @test_throws BoundsError from_python_indices(3; ndim=3)
+    @test !isdefined(Dynesty, :from_python_indices)
 end
 
 @testset "Evidence integration" begin

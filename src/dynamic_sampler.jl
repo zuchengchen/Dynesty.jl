@@ -56,7 +56,7 @@ mutable struct DynamicSampler{L, P}
     first_bound_update::Dict{Symbol, Any}
     rng::AbstractRNG
     map_backend::AbstractMapBackend
-    pool_usage::PoolUsage
+    parallel_policy::ParallelPolicy
     parallel_stats::ParallelStats
     proposal_scheduler::Symbol
     periodic::Any
@@ -107,12 +107,10 @@ function DynamicSampler(
     first_update=nothing,
     first_bound_update=nothing,
     rng=nothing,
-    rstate=nothing,
     parallel=:serial,
     map_backend=nothing,
     queue_size=nothing,
-    pool_usage=nothing,
-    use_pool=nothing,
+    parallel_policy=nothing,
     proposal_scheduler=:batch,
     enlarge=nothing,
     bootstrap=nothing,
@@ -136,19 +134,9 @@ function DynamicSampler(
     ncdim_i = isnothing(ncdim) ? ndim_i : Int(ncdim)
     1 <= ncdim_i <= ndim_i ||
         throw(ArgumentError("ncdim must be between 1 and ndim; got $ncdim_i"))
-    if !isnothing(rng) && !isnothing(rstate)
-        throw(ArgumentError("specify either rng or rstate, not both"))
-    end
-    rng_obj = if !isnothing(rng)
-        rng
-    elseif !isnothing(rstate)
-        rstate
-    else
-        Random.default_rng()
-    end
-    rng_obj isa AbstractRNG || throw(ArgumentError("rng/rstate must be an AbstractRNG"))
+    rng_obj = _rng_from_user(rng)
     backend = _get_map_backend(parallel, map_backend, queue_size)
-    usage = _get_pool_usage(pool_usage, use_pool)
+    policy = _get_parallel_policy(parallel_policy)
     scheduler = _proposal_scheduler_symbol(proposal_scheduler)
 
     sampling_v = isnothing(sampling) ? sample : sampling
@@ -200,7 +188,7 @@ function DynamicSampler(
         first_update_d,
         rng_obj,
         backend,
-        usage,
+        policy,
         ParallelStats(),
         scheduler,
         periodic,
@@ -234,8 +222,6 @@ function DynamicSampler(
         Inf,
     )
 end
-
-const DynamicNestedSampler = DynamicSampler
 
 function _dynamic_arg(args, key::Symbol, default)
     isnothing(args) && return default
@@ -379,7 +365,6 @@ function stopping_function(
     res::Results,
     args=nothing;
     rng::AbstractRNG=Random.default_rng(),
-    rstate=nothing,
     mapper=map,
     return_vals::Bool=false,
     pfrac=nothing,
@@ -389,7 +374,7 @@ function stopping_function(
     error=nothing,
     approx=nothing,
 )
-    rng_eff = isnothing(rstate) ? rng : rstate
+    rng_eff = rng
     pfrac_v = Float64(isnothing(pfrac) ? _dynamic_arg(args, :pfrac, 1.0) : pfrac)
     0.0 <= pfrac_v <= 1.0 ||
         throw(ArgumentError("pfrac must be between 0 and 1; got $pfrac_v"))
@@ -486,24 +471,26 @@ function _configure_batch_sampler(
     ncdim = Int(_dynamic_get(main_sampler, (:ncdim,); default=ndim))
     blob = Bool(_dynamic_get(main_sampler, (:blob,); default=false))
     copy_inputs = Bool(_dynamic_get(main_sampler, (:copy_inputs,); default=false))
-    rng = _dynamic_get(main_sampler, (:rng, :rstate); default=Random.default_rng())
-    rng isa AbstractRNG ||
-        throw(ArgumentError("main sampler rng/rstate must be an AbstractRNG"))
+    rng = _rng_from_user(_dynamic_get(main_sampler, (:rng,); default=Random.default_rng()))
     backend_value = _dynamic_get(main_sampler, (:map_backend,); default=nothing)
     map_backend = if isnothing(backend_value)
-        _map_backend_from_config(_dynamic_get(main_sampler, (:map_backend_config,); default=nothing))
+        _map_backend_from_config(
+            _dynamic_get(main_sampler, (:map_backend_config,); default=nothing)
+        )
     else
         backend_value
     end
     map_backend isa AbstractMapBackend ||
         throw(ArgumentError("main sampler map_backend must be an AbstractMapBackend"))
-    pool_usage = _pool_usage_from_config(
-        _dynamic_get(main_sampler, (:pool_usage, :pool_usage_config); default=nothing)
+    parallel_policy = _parallel_policy_from_config(
+        _dynamic_get(
+            main_sampler,
+            (:parallel_policy, :parallel_policy_config, :pool_usage, :pool_usage_config);
+            default=nothing,
+        ),
     )
     proposal_scheduler = _proposal_scheduler_symbol(
-        _dynamic_get(
-            main_sampler, (:proposal_scheduler,); default=:batch
-        ),
+        _dynamic_get(main_sampler, (:proposal_scheduler,); default=:batch)
     )
     sampling = _dynamic_get(main_sampler, (:sampling, :sample, :sample_kind); default=:auto)
     bounding = _dynamic_get(main_sampler, (:bounding, :bound, :bound_kind); default=:multi)
@@ -545,7 +532,7 @@ function _configure_batch_sampler(
             ndim,
             rng,
             map_backend=map_backend,
-            pool_usage,
+            parallel_policy,
             blob,
             copy_inputs,
         )
@@ -589,7 +576,7 @@ function _configure_batch_sampler(
             blob,
             copy_inputs,
             map_backend,
-            pool_usage,
+            parallel_policy,
             proposal_scheduler,
             bound_enlarge,
             bound_bootstrap,
@@ -632,7 +619,7 @@ function _configure_batch_sampler(
             blob,
             copy_inputs,
             map_backend,
-            pool_usage,
+            parallel_policy,
             proposal_scheduler,
             bound_enlarge,
             bound_bootstrap,
@@ -695,7 +682,7 @@ function _configure_batch_sampler(
             blob,
             copy_inputs,
             map_backend,
-            pool_usage,
+            parallel_policy,
             proposal_scheduler,
             bound_enlarge,
             bound_bootstrap,
@@ -740,7 +727,7 @@ function _dynamic_nested_sampler_for_batch(
     blob,
     copy_inputs,
     map_backend,
-    pool_usage,
+    parallel_policy,
     proposal_scheduler,
     bound_enlarge,
     bound_bootstrap,
@@ -769,7 +756,7 @@ function _dynamic_nested_sampler_for_batch(
         blob,
         copy_inputs,
         map_backend,
-        pool_usage,
+        parallel_policy,
         proposal_scheduler,
     )
     sampler.save_bounds = save_bounds
@@ -961,7 +948,7 @@ function _dynamic_kwargs_dict(args)
 end
 
 function _dynamic_stop_mapper(sampler::DynamicSampler, backend_time::Base.RefValue{Float64})
-    if !sampler.pool_usage.stopping || sampler.map_backend isa SerialMapBackend
+    if !sampler.parallel_policy.stopping || sampler.map_backend isa SerialMapBackend
         return map
     end
     return (f, iterable) -> begin
@@ -1321,7 +1308,7 @@ function run_nested!(
             first_update=first_update_d,
             rng=sampler.rng,
             map_backend=sampler.map_backend,
-            pool_usage=sampler.pool_usage,
+            parallel_policy=sampler.parallel_policy,
             proposal_scheduler=sampler.proposal_scheduler,
             live_points,
             enlarge=sampler.bound_enlarge,
@@ -1446,8 +1433,6 @@ function run_nested!(
     return sampler
 end
 
-run_nested(sampler::DynamicSampler; kwargs...) = run_nested!(sampler; kwargs...)
-
 function results(sampler::DynamicSampler)
     record = sampler.saved_run
     samples_u = _matrix_from_record(record, :u, sampler.ndim)
@@ -1506,7 +1491,7 @@ function sampler_snapshot(sampler::DynamicSampler)
         :first_bound_update => sampler.first_bound_update,
         :rng => sampler.rng,
         :map_backend_config => _backend_config(sampler.map_backend),
-        :pool_usage_config => _pool_usage_config(sampler.pool_usage),
+        :parallel_policy_config => _parallel_policy_config(sampler.parallel_policy),
         :parallel_stats => _parallel_stats_config(sampler.parallel_stats),
         :proposal_scheduler => sampler.proposal_scheduler,
         :periodic => sampler.periodic,
@@ -1556,7 +1541,9 @@ function _restore_dynamic_sampler(state::AbstractDict, loglikelihood, prior_tran
         first_update=state[:first_bound_update],
         rng=state[:rng],
         map_backend=_map_backend_from_config(get(state, :map_backend_config, nothing)),
-        pool_usage=_pool_usage_from_config(get(state, :pool_usage_config, nothing)),
+        parallel_policy=_parallel_policy_from_config(
+            get(state, :parallel_policy_config, get(state, :pool_usage_config, nothing))
+        ),
         proposal_scheduler=_proposal_scheduler_symbol(
             get(state, :proposal_scheduler, :batch)
         ),
@@ -1569,7 +1556,9 @@ function _restore_dynamic_sampler(state::AbstractDict, loglikelihood, prior_tran
         blob=Bool(state[:blob]),
         copy_inputs=Bool(state[:copy_inputs]),
     )
-    sampler.parallel_stats = _parallel_stats_from_config(get(state, :parallel_stats, nothing))
+    sampler.parallel_stats = _parallel_stats_from_config(
+        get(state, :parallel_stats, nothing)
+    )
     sampler.sampler = if isnothing(state[:sampler])
         nothing
     else

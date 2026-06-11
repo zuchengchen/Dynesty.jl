@@ -22,7 +22,7 @@ function run_static_gaussian(; seed=101, nlive=40, maxiter=45)
 end
 
 function run_dynamic_gaussian(; seed=202, nlive=32, nlive_batch=12)
-    sampler = DynamicNestedSampler(
+    sampler = DynamicSampler(
         gaussian_loglikelihood,
         gaussian_prior,
         2;

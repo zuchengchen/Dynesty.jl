@@ -8,6 +8,11 @@ const EXAMPLE_FILES = [
     "eggbox.jl",
     "gaussian_shells.jl",
     "high_dimensional_gaussian.jl",
+    "linear_regression.jl",
+    "exponential_wave.jl",
+    "loggamma_mixture.jl",
+    "noisy_likelihood.jl",
+    "hyper_pyramid.jl",
 ]
 
 @testset "Example scripts" begin

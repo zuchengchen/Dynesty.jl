@@ -16,9 +16,7 @@ resample_equal
 quantile
 compute_integrals
 progress_integration
-from_python_indices
 get_citations
-citations
 ```
 
 Additional public utility names:

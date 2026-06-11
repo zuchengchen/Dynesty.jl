@@ -52,7 +52,8 @@ function usage()
       --threads N                    Julia worker threads, default: 31
       --nproc N                      Python multiprocessing worker processes, default: 31
       --heavy-work-size N            default: 10000
-      --allow-missing-usr-time       only for smoke/debug on hosts without /usr/bin/time
+      --allow-missing-usr-time       accepted for older scripts; Linux /proc monitoring
+                                     is used automatically when /usr/bin/time is absent
       --skip-plots                   keep performance summary even if plots are not needed
       --resume                       skip successful run directories already present
     """
@@ -146,7 +147,8 @@ function parse_cli(args)
     cfg.queue_size > 0 || throw(ArgumentError("--queue-size must be positive"))
     cfg.threads > 0 || throw(ArgumentError("--threads must be positive"))
     cfg.nproc > 0 || throw(ArgumentError("--nproc must be positive"))
-    cfg.heavy_work_size >= 0 || throw(ArgumentError("--heavy-work-size must be nonnegative"))
+    cfg.heavy_work_size >= 0 ||
+        throw(ArgumentError("--heavy-work-size must be nonnegative"))
     unknown = setdiff(cfg.costs, collect(keys(COST_DEFAULTS)))
     isempty(unknown) || throw(ArgumentError("unknown costs: $(join(unknown, ", "))"))
     return cfg
@@ -160,8 +162,8 @@ function run_matrix(cfg::RunConfig)
         return [(cost="cheap", implementation=impl, repeat=1) for impl in IMPLEMENTATIONS]
     end
     return [
-        (cost=cost, implementation=impl, repeat=repeat)
-        for cost in cfg.costs for impl in IMPLEMENTATIONS for repeat in 1:cfg.repeats
+        (cost=cost, implementation=impl, repeat=repeat) for cost in cfg.costs for
+        impl in IMPLEMENTATIONS for repeat in 1:cfg.repeats
     ]
 end
 
@@ -273,7 +275,8 @@ end
 function parse_elapsed_seconds(text::AbstractString)
     parts = split(strip(text), ":")
     if length(parts) == 3
-        return parse(Float64, parts[1]) * 3600 + parse(Float64, parts[2]) * 60 +
+        return parse(Float64, parts[1]) * 3600 +
+               parse(Float64, parts[2]) * 60 +
                parse(Float64, parts[3])
     elseif length(parts) == 2
         return parse(Float64, parts[1]) * 60 + parse(Float64, parts[2])
@@ -301,7 +304,9 @@ function parse_time_v(stderr_text::String)
             value = replace(raw, "%" => "")
             metrics["time_percent_cpu_numeric"] = tryparse(Float64, value)
         elseif occursin("Elapsed (wall clock) time", line)
-            metrics["wall_time_seconds"] = parse_elapsed_seconds(time_value_after_label(line))
+            metrics["wall_time_seconds"] = parse_elapsed_seconds(
+                time_value_after_label(line)
+            )
         elseif occursin("Maximum resident set size (kbytes):", line)
             metrics["time_max_rss_kb"] = parse(Int, time_value_after_label(line))
         end
@@ -310,8 +315,7 @@ function parse_time_v(stderr_text::String)
         total = metrics["user_cpu_seconds"] + metrics["system_cpu_seconds"]
         metrics["total_cpu_seconds"] = total
         wall = get(metrics, "wall_time_seconds", nothing)
-        metrics["cpu_utilization"] =
-            (!isnothing(wall) && wall > 0) ? total / wall : nothing
+        metrics["cpu_utilization"] = (!isnothing(wall) && wall > 0) ? total / wall : nothing
     end
     return metrics
 end
@@ -352,9 +356,7 @@ end
 
 function base_env_pairs(cfg::RunConfig, implementation::String)
     pairs = [
-        "OPENBLAS_NUM_THREADS" => "1",
-        "OMP_NUM_THREADS" => "1",
-        "MKL_NUM_THREADS" => "1",
+        "OPENBLAS_NUM_THREADS" => "1", "OMP_NUM_THREADS" => "1", "MKL_NUM_THREADS" => "1"
     ]
     if implementation == "python"
         push!(pairs, "PYTHONPATH" => PYTHON_DYNESTY_PATH)
@@ -366,11 +368,24 @@ function run_id(cost::String, implementation::String, repeat::Int)
     return "$(cost)_$(implementation)_repeat$(repeat)"
 end
 
-function command_for(cfg::RunConfig, cost::String, implementation::String, repeat::Int, run_dir::String)
+function command_for(
+    cfg::RunConfig, cost::String, implementation::String, repeat::Int, run_dir::String
+)
     nlive = cfg.mode == "smoke" ? cfg.smoke_nlive : cfg.nlive
     dlogz = cfg.mode == "smoke" ? cfg.smoke_dlogz : cfg.dlogz
-    seed = 20240610 + repeat + (cost == "medium" ? 100 : cost == "heavy" ? 200 : 0) +
-           (implementation == "python" ? 10_000 : 0)
+    seed =
+        20240610 +
+        repeat +
+        (
+            if cost == "medium"
+                100
+            elseif cost == "heavy"
+                200
+            else
+                0
+            end
+        ) +
+        (implementation == "python" ? 10_000 : 0)
     work_size = work_size_for(cost, cfg)
     common = [
         "--output-dir",
@@ -417,6 +432,23 @@ function time_command_available()
     return isfile(TIME_COMMAND) && Sys.isexecutable(TIME_COMMAND)
 end
 
+function monitor_kind()
+    return time_command_available() ? "gnu_time" : "process_monitor"
+end
+
+function monitor_kind(monitor::AbstractDict)
+    if haskey(monitor, "monitor_kind")
+        return String(monitor["monitor_kind"])
+    elseif get(monitor, "used_usr_bin_time", false) == true &&
+        get(monitor, "time_unavailable", false) != true
+        return "gnu_time"
+    elseif get(monitor, "used_process_monitor", false) == true
+        return "process_monitor"
+    else
+        return "unknown"
+    end
+end
+
 function run_monitored!(
     cmd_words::Vector{String},
     env_pairs,
@@ -428,11 +460,6 @@ function run_monitored!(
     stderr_path = joinpath(run_dir, "stderr.txt")
     monitor_path = joinpath(run_dir, "monitor_metadata.json")
     use_usr_time = time_command_available()
-    if !use_usr_time && !allow_missing_usr_time
-        error(
-            "required /usr/bin/time -v is not available on this host; install GNU time or rerun smoke/debug with --allow-missing-usr-time",
-        )
-    end
     full_cmd = use_usr_time ? [TIME_COMMAND, "-v", cmd_words...] : cmd_words
     cmd = Cmd(Cmd(Cmd(full_cmd); ignorestatus=true); dir=ROOT)
     cmd_env = copy(ENV)
@@ -446,14 +473,17 @@ function run_monitored!(
     stdout_io = open(stdout_path, "w")
     stderr_io = open(stderr_path, "w")
     try
-        proc = run(pipeline(cmd, stdout=stdout_io, stderr=stderr_io), wait=false)
+        proc = run(pipeline(cmd; stdout=stdout_io, stderr=stderr_io); wait=false)
         root_pid = try
             getpid(proc)
         catch
             nothing
         end
-        monitor_task = isnothing(root_pid) ? nothing :
-                       Threads.@async monitor_memory!(peak, root_pid, proc)
+        monitor_task = if isnothing(root_pid)
+            nothing
+        else
+            Threads.@async monitor_memory!(peak, root_pid, proc)
+        end
         wait(proc)
         if !isnothing(monitor_task)
             wait(monitor_task)
@@ -469,7 +499,11 @@ function run_monitored!(
     if !haskey(time_metrics, "wall_time_seconds")
         time_metrics["wall_time_seconds"] = measured_wall
     end
-    if haskey(time_metrics, "user_cpu_seconds") && haskey(time_metrics, "system_cpu_seconds")
+    if !haskey(time_metrics, "time_max_rss_kb") && peak.peak_rss_kb > 0
+        time_metrics["time_max_rss_kb"] = peak.peak_rss_kb
+    end
+    if haskey(time_metrics, "user_cpu_seconds") &&
+        haskey(time_metrics, "system_cpu_seconds")
         total = time_metrics["user_cpu_seconds"] + time_metrics["system_cpu_seconds"]
         time_metrics["total_cpu_seconds"] = total
         wall = get(time_metrics, "wall_time_seconds", measured_wall)
@@ -489,7 +523,10 @@ function run_monitored!(
         "success" => exit_code == 0,
         "used_usr_bin_time" => use_usr_time,
         "time_unavailable" => !use_usr_time,
+        "monitor_kind" => use_usr_time ? "gnu_time" : "process_monitor",
+        "used_process_monitor" => true,
         "measured_wall_time_seconds" => measured_wall,
+        "memory_sample_interval_seconds" => MEMORY_SAMPLE_INTERVAL_SECONDS,
         "process_tree_peak_rss_kb" => peak.peak_rss_kb == 0 ? nothing : peak.peak_rss_kb,
         "process_tree_peak_pss_kb" => peak.pss_available ? peak.peak_pss_kb : nothing,
         "process_tree_peak_processes" => peak.peak_processes,
@@ -509,9 +546,7 @@ function metadata_paths(run_dir::String, implementation::String)
 end
 
 function maybe_plot_pair(
-    cfg::RunConfig,
-    julia_row::Dict{String, Any},
-    python_row::Dict{String, Any},
+    cfg::RunConfig, julia_row::Dict{String, Any}, python_row::Dict{String, Any}
 )
     cost = String(julia_row["cost"])
     repeat = Int(julia_row["repeat"])
@@ -521,9 +556,7 @@ function maybe_plot_pair(
         "corner_$(cost)_repeat$(repeat)_julia_vs_python_summary.json",
     )
     plot_png = joinpath(
-        cfg.output_dir,
-        "plots",
-        "corner_$(cost)_repeat$(repeat)_julia_vs_python.png",
+        cfg.output_dir, "plots", "corner_$(cost)_repeat$(repeat)_julia_vs_python.png"
     )
     julia_samples_file = String(julia_row["samples_file"])
     python_samples_file = String(python_row["samples_file"])
@@ -532,9 +565,13 @@ function maybe_plot_pair(
     if cfg.skip_plots || pair_failed || missing_samples
         payload = Dict{String, Any}(
             "status" => cfg.skip_plots ? "skipped" : "failed",
-            "message" => cfg.skip_plots ? "plot generation skipped" :
-                         pair_failed ? "one or both runs failed" :
-                         "one or both runs did not produce samples",
+            "message" => if cfg.skip_plots
+                "plot generation skipped"
+            elseif pair_failed
+                "one or both runs failed"
+            else
+                "one or both runs did not produce samples"
+            end,
             "plot_file" => nothing,
             "method" => nothing,
             "comparison" => "julia_vs_python",
@@ -640,17 +677,13 @@ function refresh_overlay_plots!(
 end
 
 function ordered_plot_rows(
-    cfg::RunConfig,
-    plot_rows_by_key::Dict{Tuple{String, Int}, Dict{String, Any}},
+    cfg::RunConfig, plot_rows_by_key::Dict{Tuple{String, Int}, Dict{String, Any}}
 )
     rows = collect(values(plot_rows_by_key))
     cost_rank = Dict(cost => i for (i, cost) in enumerate(cfg.costs))
     sort!(
         rows;
-        by=row -> (
-            get(cost_rank, String(row["cost"]), typemax(Int)),
-            Int(row["repeat"]),
-        ),
+        by=row -> (get(cost_rank, String(row["cost"]), typemax(Int)), Int(row["repeat"])),
     )
     return rows
 end
@@ -666,7 +699,11 @@ function row_from_run(
     paths = metadata_paths(run_dir, implementation)
     meta = read_json_dict(paths.metadata)
     time_metrics = get(monitor, "time_metrics", Dict{String, Any}())
-    wall = get(time_metrics, "wall_time_seconds", get(monitor, "measured_wall_time_seconds", nothing))
+    wall = get(
+        time_metrics,
+        "wall_time_seconds",
+        get(monitor, "measured_wall_time_seconds", nothing),
+    )
     user_cpu = get(time_metrics, "user_cpu_seconds", nothing)
     system_cpu = get(time_metrics, "system_cpu_seconds", nothing)
     total_cpu = get(time_metrics, "total_cpu_seconds", nothing)
@@ -690,6 +727,7 @@ function row_from_run(
         "exit_code" => get(monitor, "exit_code", nothing),
         "used_usr_bin_time" => get(monitor, "used_usr_bin_time", false),
         "time_unavailable" => get(monitor, "time_unavailable", false),
+        "monitor_kind" => monitor_kind(monitor),
         "wall_time_seconds" => wall,
         "user_cpu_seconds" => user_cpu,
         "system_cpu_seconds" => system_cpu,
@@ -703,12 +741,19 @@ function row_from_run(
         "nlive" => get(meta, "nlive", cfg.mode == "smoke" ? cfg.smoke_nlive : cfg.nlive),
         "dlogz" => get(meta, "dlogz", cfg.mode == "smoke" ? cfg.smoke_dlogz : cfg.dlogz),
         "queue_size" => get(meta, "queue_size", cfg.queue_size),
-        "threads" => get(meta, "threads", implementation == "julia" ? cfg.threads : nothing),
+        "threads" =>
+            get(meta, "threads", implementation == "julia" ? cfg.threads : nothing),
         "nproc" => get(meta, "nproc", implementation == "python" ? cfg.nproc : nothing),
-        "pool" => get(meta, "pool", implementation == "python" ? "multiprocessing.Pool" : nothing),
-        "proposal_scheduler" => get(meta, "proposal_scheduler", implementation == "julia" ? "auto" : nothing),
-        "worker_label" => implementation == "python" ? "Python $(cfg.nproc) worker processes" :
-                          "Julia $(cfg.threads) threads",
+        "pool" => get(
+            meta, "pool", implementation == "python" ? "multiprocessing.Pool" : nothing
+        ),
+        "proposal_scheduler" =>
+            get(meta, "proposal_scheduler", implementation == "julia" ? "auto" : nothing),
+        "worker_label" => if implementation == "python"
+            "Python $(cfg.nproc) worker processes"
+        else
+            "Julia $(cfg.threads) threads"
+        end,
         "work_size" => get(meta, "work_size", work_size_for(cost, cfg)),
         "sleep_ms" => get(meta, "sleep_ms", 0),
         "seed" => get(meta, "seed", nothing),
@@ -717,7 +762,11 @@ function row_from_run(
         "logzerr" => get(meta, "logzerr", nothing),
         "mean_abs_max_delta_from_truth" => mean_abs_max,
         "mean_l2_delta_from_truth" => mean_l2,
-        "python_executable" => get(meta, "python_executable", implementation == "python" ? cfg.python_exe : nothing),
+        "python_executable" => get(
+            meta,
+            "python_executable",
+            implementation == "python" ? cfg.python_exe : nothing,
+        ),
         "python_version" => get(meta, "python_version", nothing),
         "dynesty_file" => get(meta, "dynesty_file", nothing),
         "dynesty_version" => get(meta, "dynesty_version", nothing),
@@ -735,7 +784,9 @@ function row_from_run(
     )
 end
 
-function expected_run_shape(cfg::RunConfig, cost::String, implementation::String, repeat::Int)
+function expected_run_shape(
+    cfg::RunConfig, cost::String, implementation::String, repeat::Int
+)
     return Dict{String, Any}(
         "mode" => cfg.mode,
         "cost" => cost,
@@ -766,8 +817,9 @@ function reusable_existing_run(
     monitor::Dict{String, Any},
 )
     get(monitor, "success", false) == true || return false
-    cfg.mode == "formal" && get(monitor, "used_usr_bin_time", false) != true && return false
-    cfg.mode == "formal" && get(monitor, "time_unavailable", true) == true && return false
+    if cfg.mode == "formal"
+        monitor_kind(monitor) in ("gnu_time", "process_monitor") || return false
+    end
     config_path = joinpath(run_dir, "run_config.json")
     isfile(config_path) || return false
     run_cfg = read_json_dict(config_path)
@@ -858,6 +910,7 @@ function write_outputs(cfg::RunConfig, rows, plot_rows)
         "exit_code",
         "used_usr_bin_time",
         "time_unavailable",
+        "monitor_kind",
         "wall_time_seconds",
         "user_cpu_seconds",
         "system_cpu_seconds",
@@ -943,13 +996,17 @@ function write_outputs(cfg::RunConfig, rows, plot_rows)
             "nproc" => cfg.nproc,
             "nlive" => cfg.mode == "smoke" ? cfg.smoke_nlive : cfg.nlive,
             "dlogz" => cfg.mode == "smoke" ? cfg.smoke_dlogz : cfg.dlogz,
-            "cost_work_sizes" => Dict(cost => work_size_for(cost, cfg) for cost in cfg.costs),
+            "cost_work_sizes" =>
+                Dict(cost => work_size_for(cost, cfg) for cost in cfg.costs),
             "sleep_ms" => 0,
             "julia_proposal_scheduler" => "auto",
             "python_pool" => "multiprocessing.Pool",
-            "used_usr_bin_time" => any(get(row, "used_usr_bin_time", false) == true for row in rows),
+            "used_usr_bin_time" =>
+                any(get(row, "used_usr_bin_time", false) == true for row in rows),
+            "monitor_kind" => monitor_kind(),
             "time_command" => TIME_COMMAND,
             "time_command_available" => time_command_available(),
+            "process_monitor_available" => Sys.islinux(),
         ),
         "runs" => rows,
         "aggregates" => aggregate_rows(rows),
@@ -1003,12 +1060,9 @@ function main(args=ARGS)
     if !isdir(PYTHON_DYNESTY_PATH)
         error("expected read-only Python dynesty source at $PYTHON_DYNESTY_PATH")
     end
-    if !time_command_available() && (cfg.mode == "formal" || !cfg.allow_missing_usr_time)
-        error(
-            "required /usr/bin/time -v is missing. This benchmark intentionally fails early because the goal requires /usr/bin/time -v metrics.",
-        )
-    elseif !time_command_available()
-        @warn "/usr/bin/time is missing; smoke/debug run will record time_unavailable=true and cannot satisfy formal benchmark requirements"
+    if !time_command_available()
+        @warn "/usr/bin/time is missing; using Julia/Linux process monitor for wall time and process-tree RSS/PSS metrics" mode =
+            cfg.mode
     end
     rows = Dict{String, Any}[]
     plot_rows_by_key = Dict{Tuple{String, Int}, Dict{String, Any}}()
@@ -1019,15 +1073,19 @@ function main(args=ARGS)
             refresh_overlay_plots!(cfg, rows, plot_rows_by_key)
             plot_rows = ordered_plot_rows(cfg, plot_rows_by_key)
             outputs = write_outputs(cfg, rows, plot_rows)
-            @info "Updated benchmark summaries" summary_csv = outputs.summary_csv summary_json = outputs.summary_json
+            @info "Updated benchmark summaries" summary_csv = outputs.summary_csv summary_json =
+                outputs.summary_json
             if row["status"] != "ok"
-                error("benchmark run $(row["run_id"]) failed; see $(row["stderr_file"]) and $(row["stdout_file"])")
+                error(
+                    "benchmark run $(row["run_id"]) failed; see $(row["stderr_file"]) and $(row["stdout_file"])",
+                )
             end
         end
     catch err
         plot_rows = ordered_plot_rows(cfg, plot_rows_by_key)
         outputs = write_outputs(cfg, rows, plot_rows)
-        @error "Benchmark stopped before completing all requested runs" error = err summary_json = outputs.summary_json
+        @error "Benchmark stopped before completing all requested runs" error = err summary_json =
+            outputs.summary_json
         rethrow()
     end
     plot_rows = ordered_plot_rows(cfg, plot_rows_by_key)
@@ -1035,7 +1093,9 @@ function main(args=ARGS)
     println("Wrote summary CSV: $(outputs.summary_csv)")
     println("Wrote summary JSON: $(outputs.summary_json)")
     println("Wrote plot index CSV: $(outputs.plot_csv)")
-    println("Comparison: Julia $(cfg.threads) threads vs Python $(cfg.nproc) multiprocessing worker processes")
+    println(
+        "Comparison: Julia $(cfg.threads) threads vs Python $(cfg.nproc) multiprocessing worker processes",
+    )
     return rows
 end
 

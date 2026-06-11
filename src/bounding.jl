@@ -1054,9 +1054,7 @@ function _bound_bootstrap_max(
         )
         return Float64(value), 0.0
     end
-    inputs = [
-        BoundBootstrapTaskInput(slot, kind, pts, multi, ftype) for slot in 1:ntasks
-    ]
+    inputs = [BoundBootstrapTaskInput(slot, kind, pts, multi, ftype) for slot in 1:ntasks]
     seed = _bound_bootstrap_seed!(rng)
     backend_start = time()
     values = map_with_rng(

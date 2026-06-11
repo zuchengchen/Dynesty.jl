@@ -25,13 +25,11 @@ const RESULTS_ALLOWED_KEYS = Set{Symbol}((
     :information,
     :bound,
     :bound_iter,
-    :samples_bound,
     :boundidx,
     :scale,
     :proposal_stats,
     :parallel_stats,
     :blobs,
-    :batch,
     :batch_nlive,
     :batch_logl_bounds,
 ))
@@ -52,19 +50,12 @@ end
 
 Results(; kwargs...) = Results(Dict{Symbol, Any}(kwargs))
 
-function _result_key_alias(key::Symbol)
-    key === :blob && return :blobs
-    key === :samples_bound && return :boundidx
-    key === :batch && return :samples_batch
-    return key
-end
-
 function Results(key_values)
     pairs_iter = key_values isa AbstractDict ? pairs(key_values) : key_values
     data = Dict{Symbol, Any}()
     order = Symbol[]
     for (raw_key, value) in pairs_iter
-        key = _result_key_alias(Symbol(raw_key))
+        key = Symbol(raw_key)
         key in RESULTS_ALLOWED_KEYS ||
             throw(ArgumentError("unknown Results key $(repr(key))"))
         haskey(data, key) && throw(ArgumentError("duplicate Results key $(repr(key))"))
@@ -94,26 +85,17 @@ function Base.getproperty(res::Results, name::Symbol)
         return getfield(res, name)
     elseif haskey(getfield(res, :data), name)
         return getfield(res, :data)[name]
-    elseif name === :blob && haskey(getfield(res, :data), :blobs)
-        return getfield(res, :data)[:blobs]
-    elseif name === :samples_bound && haskey(getfield(res, :data), :boundidx)
-        return getfield(res, :data)[:boundidx]
-    elseif name === :batch && haskey(getfield(res, :data), :samples_batch)
-        return getfield(res, :data)[:samples_batch]
     else
         return getfield(res, name)
     end
 end
 
 function Base.getindex(res::Results, key::Symbol)
-    key = _result_key_alias(key)
     haskey(res.data, key) || throw(KeyError(key))
     return res.data[key]
 end
 
-Base.getindex(res::Results, key::AbstractString) = getindex(res, Symbol(key))
-Base.haskey(res::Results, key::Symbol) = haskey(res.data, _result_key_alias(key))
-Base.haskey(res::Results, key::AbstractString) = haskey(res, Symbol(key))
+Base.haskey(res::Results, key::Symbol) = haskey(res.data, key)
 Base.keys(res::Results) = copy(res.order)
 Base.pairs(res::Results) = ((key, res.data[key]) for key in res.order)
 
@@ -148,7 +130,7 @@ end
 function results_substitute(res::Results, replacements::AbstractDict)
     data = asdict(res)
     for (raw_key, value) in replacements
-        key = _result_key_alias(Symbol(raw_key))
+        key = Symbol(raw_key)
         haskey(data, key) && (data[key] = value)
     end
     return Results([(key, data[key]) for key in res.order])
@@ -218,10 +200,8 @@ function _replace_integrals(res::Results, logvol, logwt, logz, logzvar, h)
     return results_substitute(res, replacements)
 end
 
-function jitter_run(
-    res::Results; rng::AbstractRNG=Random.default_rng(), rstate=nothing, approx::Bool=false
-)
-    rng_eff = isnothing(rstate) ? rng : rstate
+function jitter_run(res::Results; rng::AbstractRNG=Random.default_rng(), approx::Bool=false)
+    rng_eff = rng
     nsamps, samples_n = _get_nsamps_samples_n(res)
     nlive_flag, nlive_start, bounds = if approx
         trues(nsamps), Int[], Tuple{Int, Int}[]
@@ -280,12 +260,9 @@ function _batch_info(res::Results, samples_n)
 end
 
 function resample_run(
-    res::Results;
-    rng::AbstractRNG=Random.default_rng(),
-    rstate=nothing,
-    return_idx::Bool=false,
+    res::Results; rng::AbstractRNG=Random.default_rng(), return_idx::Bool=false
 )
-    rng_eff = isnothing(rstate) ? rng : rstate
+    rng_eff = rng
     nsamps = length(res.ncall)
     samples_n = _get_nsamps_samples_n(res)[2]
     added_final_live = isdynamic(res) ? true : nsamps == Int(res.niter) + Int(res.nlive)
@@ -696,15 +673,14 @@ end
 
 function kld_error(
     res::Results;
-    error::Union{Symbol, AbstractString}=:jitter,
+    error::Symbol=:jitter,
     rng::AbstractRNG=Random.default_rng(),
-    rstate=nothing,
     return_new::Bool=false,
     approx::Bool=false,
 )
-    rng_eff = isnothing(rstate) ? rng : rstate
+    rng_eff = rng
     logp2 = Float64.(res.logwt) .- Float64(res.logz[end])
-    err = Symbol(error)
+    err = error
     if err === :jitter
         new_res = jitter_run(res; rng=rng_eff, approx)
     elseif err === :resample
@@ -721,10 +697,6 @@ end
 function _kld_error(args)
     res, error, approx, seed = args
     return kld_error(
-        res;
-        error=Symbol(error),
-        rng=MersenneTwister(seed),
-        return_new=true,
-        approx=Bool(approx),
+        res; error=error, rng=MersenneTwister(seed), return_new=true, approx=Bool(approx)
     )
 end

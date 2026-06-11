@@ -31,7 +31,7 @@ res = results(sampler)
 Dynamic nested sampling uses the same conventions:
 
 ```julia
-dsampler = DynamicNestedSampler(
+dsampler = DynamicSampler(
     loglikelihood,
     prior_transform,
     2;
@@ -53,6 +53,12 @@ dres = results(dsampler)
 
 See the manual pages for runnable workflows and the API pages for exported
 types and functions.
+
+## Migration Guide
+
+Use [`Migration Guide`](migration_guide.md) for Python-to-Julia and
+compatibility-style rewrites. Intentional public behavior differences are
+listed in [`Compatibility`](compatibility.md).
 
 ## Migration Matrix
 

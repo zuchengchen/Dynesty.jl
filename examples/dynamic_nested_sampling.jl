@@ -5,7 +5,7 @@ prior_transform(u) = [2.0 * u[1] - 1.0, 2.0 * u[2] - 1.0]
 loglikelihood(v) = -0.5 * ((v[1] / 0.18)^2 + (v[2] / 0.32)^2)
 
 function main(; rng=MersenneTwister(22), nlive=32, nlive_batch=12)
-    sampler = DynamicNestedSampler(
+    sampler = DynamicSampler(
         loglikelihood, prior_transform, 2; nlive, bound=:none, sample=:unif, rng
     )
     run_nested!(

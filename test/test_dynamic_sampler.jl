@@ -55,8 +55,7 @@ mutable struct DynamicStopErrorBackend <: Dynesty.AbstractMapBackend
     calls::Int
 end
 
-DynamicStopErrorBackend(queue_size::Integer) =
-    DynamicStopErrorBackend(Int(queue_size), 0)
+DynamicStopErrorBackend(queue_size::Integer) = DynamicStopErrorBackend(Int(queue_size), 0)
 
 Dynesty.backend_kind(::DynamicStopErrorBackend) = :dynamic_stop_error
 
@@ -131,8 +130,8 @@ function dynamic_parent_fixture(; rng=MersenneTwister(1234))
         :first_update => Dict(:min_ncall => 1, :min_eff => 100.0),
         :bound_bootstrap => 0,
         :bound_enlarge => 1.0,
-        :map_backend => ThreadedMapBackend(queue_size=2),
-        :pool_usage => PoolUsage(proposals=false, stopping=true),
+        :map_backend => ThreadedMapBackend(; queue_size=2),
+        :parallel_policy => ParallelPolicy(; proposals=false, stopping=true),
         :proposal_scheduler => :async,
         :saved_run => dynamic_saved_record(),
         :it => 7,
@@ -151,15 +150,6 @@ end
         rng=MersenneTwister(707),
     )
     @test sampler isa DynamicSampler
-    @test DynamicNestedSampler(
-        dynamic_loglike,
-        dynamic_prior_identity,
-        2;
-        nlive=8,
-        bound=:none,
-        sample=:unif,
-        rng=MersenneTwister(708),
-    ) isa DynamicSampler
     @test sampler.internal_state == DynamicSamplerInit
 
     run_nested!(sampler; maxiter_init=18, dlogz_init=nothing, print_progress=false)
@@ -204,7 +194,7 @@ end
         sample=:unif,
         rng=MersenneTwister(709),
     )
-    returned = run_nested(
+    returned = run_nested!(
         alias_sampler; maxiter_init=4, dlogz_init=nothing, print_progress=false
     )
     @test returned === alias_sampler
@@ -233,7 +223,7 @@ end
     @test sampler.sampler.proposal_batches_submitted > 0
 end
 
-@testset "Dynamic sampler pool usage propagation" begin
+@testset "Dynamic sampler parallel policy propagation" begin
     backend = DynamicCountingMapBackend(3)
     sampler = DynamicSampler(
         dynamic_loglike,
@@ -244,28 +234,25 @@ end
         sample=:unif,
         rng=MersenneTwister(713),
         map_backend=backend,
-        use_pool=(propose_point=false, stop_function=true),
+        parallel_policy=ParallelPolicy(proposals=false, stopping=true),
         proposal_scheduler=:async,
     )
-    @test sampler.pool_usage.proposals == false
-    @test sampler.pool_usage.stopping == true
+    @test sampler.parallel_policy.proposals == false
+    @test sampler.parallel_policy.stopping == true
     @test sampler.proposal_scheduler == :async
     run_nested!(sampler; maxiter_init=5, dlogz_init=nothing, print_progress=false)
     @test sampler.sampler isa NestedSampler
-    @test sampler.sampler.pool_usage == sampler.pool_usage
+    @test sampler.sampler.parallel_policy == sampler.parallel_policy
     @test sampler.sampler.proposal_scheduler == :async
     @test sampler.sampler.proposal_tasks_submitted == 0
     @test backend.calls == 1
     @test results(sampler).parallel_stats.proposal_tasks_submitted == 0
 
     configured = _configure_batch_sampler(
-        dynamic_parent_fixture(; rng=MersenneTwister(714)),
-        4,
-        3;
-        logl_bounds=(-Inf, -0.5),
+        dynamic_parent_fixture(; rng=MersenneTwister(714)), 4, 3; logl_bounds=(-Inf, -0.5)
     )
-    @test configured.sampler.pool_usage.proposals == false
-    @test configured.sampler.pool_usage.stopping == true
+    @test configured.sampler.parallel_policy.proposals == false
+    @test configured.sampler.parallel_policy.stopping == true
     @test configured.sampler.proposal_scheduler == :async
 end
 
@@ -287,7 +274,7 @@ end
     @test length(res.blobs) == length(res.logl)
     @test res.blobs[1].first isa Float64
     @test haskey(res, :bound)
-    @test haskey(res, :samples_bound)
+    @test haskey(res, :boundidx)
     @test haskey(res, :scale)
 
     mktempdir() do dir
@@ -298,12 +285,12 @@ end
         )
         @test restored isa DynamicSampler
         @test restored.internal_state == DynamicSamplerRunDone
-        @test restored.pool_usage == sampler.pool_usage
+        @test restored.parallel_policy == sampler.parallel_policy
         @test restored.proposal_scheduler == sampler.proposal_scheduler
         @test restored.parallel_stats.initial_evaluation_tasks ==
             sampler.parallel_stats.initial_evaluation_tasks
         @test restored.sampler isa NestedSampler
-        @test restored.sampler.pool_usage == sampler.sampler.pool_usage
+        @test restored.sampler.parallel_policy == sampler.sampler.parallel_policy
         @test restored.sampler.proposal_scheduler == sampler.sampler.proposal_scheduler
         restored_res = results(restored)
         @test Dynesty.isdynamic(restored_res)
@@ -403,7 +390,7 @@ end
         bound=:none,
         sample=:unif,
         rng=MersenneTwister(729),
-        pool_usage=PoolUsage(stopping=true),
+        parallel_policy=ParallelPolicy(stopping=true),
     )
     run_nested!(
         sampler;
@@ -420,7 +407,7 @@ end
     @test results(sampler).parallel_stats.stop_function_count == 1
 end
 
-@testset "Dynamic sampler stop-function pool usage" begin
+@testset "Dynamic sampler stop-function parallel policy" begin
     optout_backend = DynamicCountingMapBackend(3)
     optout = DynamicSampler(
         dynamic_loglike,
@@ -431,7 +418,9 @@ end
         sample=:unif,
         rng=MersenneTwister(730),
         map_backend=optout_backend,
-        pool_usage=PoolUsage(initial=false, proposals=false, stopping=false),
+        parallel_policy=ParallelPolicy(
+            initialization=false, proposals=false, stopping=false
+        ),
     )
     run_nested!(
         optout;
@@ -456,7 +445,9 @@ end
         sample=:unif,
         rng=MersenneTwister(730),
         map_backend=optin_backend,
-        pool_usage=PoolUsage(initial=false, proposals=false, stopping=true),
+        parallel_policy=ParallelPolicy(
+            initialization=false, proposals=false, stopping=true
+        ),
     )
     run_nested!(
         optin;
@@ -485,7 +476,9 @@ end
             rng=MersenneTwister(seed),
             parallel=:threads,
             queue_size=3,
-            pool_usage=PoolUsage(initial=false, proposals=false, stopping=true),
+            parallel_policy=ParallelPolicy(
+                initialization=false, proposals=false, stopping=true
+            ),
         )
         run_nested!(
             sampler;
@@ -515,7 +508,9 @@ end
         sample=:unif,
         rng=MersenneTwister(732),
         map_backend=error_backend,
-        pool_usage=PoolUsage(initial=false, proposals=false, stopping=true),
+        parallel_policy=ParallelPolicy(
+            initialization=false, proposals=false, stopping=true
+        ),
     )
     err = try
         run_nested!(

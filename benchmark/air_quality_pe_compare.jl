@@ -66,6 +66,8 @@ function usage()
       --nproc N                      formal Python worker processes, default 31
       --smoke-nproc N                smoke Python worker processes, default 4
       --work-repeats N               skip auto-calibration and use this repeat count
+      --allow-missing-usr-time       accepted for older scripts; Linux /proc monitoring
+                                     is used automatically when /usr/bin/time is absent
       --skip-python                  run Julia side only and record Python as skipped
       --skip-plots                   keep summary even if overlay plots are not needed
       --resume                       skip reusable successful run directories
@@ -188,7 +190,8 @@ function parse_cli(args)
     cfg.nproc > 0 || throw(ArgumentError("--nproc must be positive"))
     cfg.smoke_nproc > 0 || throw(ArgumentError("--smoke-nproc must be positive"))
     cfg.sleep_ms >= 0 || throw(ArgumentError("--sleep-ms must be nonnegative"))
-    cfg.calibration_trials > 0 || throw(ArgumentError("--calibration-trials must be positive"))
+    cfg.calibration_trials > 0 ||
+        throw(ArgumentError("--calibration-trials must be positive"))
     cfg.python_start_method in ("spawn", "forkserver", "fork") ||
         throw(ArgumentError("--python-start-method must be spawn, forkserver, or fork"))
     return cfg
@@ -197,7 +200,8 @@ end
 active_repeats(cfg::RunConfig) = cfg.mode == "smoke" ? 1 : cfg.repeats
 active_nlive(cfg::RunConfig) = cfg.mode == "smoke" ? cfg.smoke_nlive : cfg.nlive
 active_dlogz(cfg::RunConfig) = cfg.mode == "smoke" ? cfg.smoke_dlogz : cfg.dlogz
-active_queue_size(cfg::RunConfig) = cfg.mode == "smoke" ? cfg.smoke_queue_size : cfg.queue_size
+active_queue_size(cfg::RunConfig) =
+    cfg.mode == "smoke" ? cfg.smoke_queue_size : cfg.queue_size
 active_nproc(cfg::RunConfig) = cfg.mode == "smoke" ? cfg.smoke_nproc : cfg.nproc
 
 function run_matrix(cfg::RunConfig)
@@ -314,7 +318,8 @@ end
 function parse_elapsed_seconds(text::AbstractString)
     parts = split(strip(text), ":")
     if length(parts) == 3
-        return parse(Float64, parts[1]) * 3600 + parse(Float64, parts[2]) * 60 +
+        return parse(Float64, parts[1]) * 3600 +
+               parse(Float64, parts[2]) * 60 +
                parse(Float64, parts[3])
     elseif length(parts) == 2
         return parse(Float64, parts[1]) * 60 + parse(Float64, parts[2])
@@ -341,7 +346,9 @@ function parse_time_v(stderr_text::String)
             metrics["time_percent_cpu"] = raw
             metrics["time_percent_cpu_numeric"] = tryparse(Float64, replace(raw, "%" => ""))
         elseif occursin("Elapsed (wall clock) time", line)
-            metrics["wall_time_seconds"] = parse_elapsed_seconds(time_value_after_label(line))
+            metrics["wall_time_seconds"] = parse_elapsed_seconds(
+                time_value_after_label(line)
+            )
         elseif occursin("Maximum resident set size (kbytes):", line)
             metrics["time_max_rss_kb"] = parse(Int, time_value_after_label(line))
         end
@@ -350,8 +357,7 @@ function parse_time_v(stderr_text::String)
         total = metrics["user_cpu_seconds"] + metrics["system_cpu_seconds"]
         metrics["total_cpu_seconds"] = total
         wall = get(metrics, "wall_time_seconds", nothing)
-        metrics["cpu_utilization"] =
-            (!isnothing(wall) && wall > 0) ? total / wall : nothing
+        metrics["cpu_utilization"] = (!isnothing(wall) && wall > 0) ? total / wall : nothing
     end
     return metrics
 end
@@ -394,11 +400,26 @@ function time_command_available()
     return isfile(TIME_COMMAND) && Sys.isexecutable(TIME_COMMAND)
 end
 
+function monitor_kind()
+    return time_command_available() ? "gnu_time" : "process_monitor"
+end
+
+function monitor_kind(monitor::AbstractDict)
+    if haskey(monitor, "monitor_kind")
+        return String(monitor["monitor_kind"])
+    elseif get(monitor, "used_usr_bin_time", false) == true &&
+        get(monitor, "time_unavailable", false) != true
+        return "gnu_time"
+    elseif get(monitor, "used_process_monitor", false) == true
+        return "process_monitor"
+    else
+        return "unknown"
+    end
+end
+
 function base_env_pairs(implementation::String)
     pairs = [
-        "OPENBLAS_NUM_THREADS" => "1",
-        "OMP_NUM_THREADS" => "1",
-        "MKL_NUM_THREADS" => "1",
+        "OPENBLAS_NUM_THREADS" => "1", "OMP_NUM_THREADS" => "1", "MKL_NUM_THREADS" => "1"
     ]
     if implementation == "python"
         push!(pairs, "PYTHONPATH" => PYTHON_DYNESTY_PATH)
@@ -408,7 +429,9 @@ end
 
 run_id(implementation::String, repeat::Int) = "$(implementation)_repeat$(repeat)"
 
-function command_for(cfg::RunConfig, implementation::String, repeat::Int, run_dir::String, work_repeats::Int)
+function command_for(
+    cfg::RunConfig, implementation::String, repeat::Int, run_dir::String, work_repeats::Int
+)
     seed = 20240621 + repeat + (implementation == "python" ? 10_000 : 0)
     common = [
         "--output-dir",
@@ -463,9 +486,6 @@ function run_monitored!(
     stderr_path = joinpath(run_dir, "stderr.txt")
     monitor_path = joinpath(run_dir, "monitor_metadata.json")
     use_usr_time = time_command_available()
-    if !use_usr_time && !allow_missing_usr_time
-        error("required /usr/bin/time -v is not available on this host")
-    end
     full_cmd = use_usr_time ? [TIME_COMMAND, "-v", cmd_words...] : cmd_words
     cmd_env = copy(ENV)
     for (key, value) in env_pairs
@@ -478,14 +498,17 @@ function run_monitored!(
     stdout_io = open(stdout_path, "w")
     stderr_io = open(stderr_path, "w")
     try
-        proc = run(pipeline(cmd, stdout=stdout_io, stderr=stderr_io), wait=false)
+        proc = run(pipeline(cmd; stdout=stdout_io, stderr=stderr_io); wait=false)
         root_pid = try
             getpid(proc)
         catch
             nothing
         end
-        monitor_task = isnothing(root_pid) ? nothing :
-                       Threads.@async monitor_memory!(peak, root_pid, proc)
+        monitor_task = if isnothing(root_pid)
+            nothing
+        else
+            Threads.@async monitor_memory!(peak, root_pid, proc)
+        end
         wait(proc)
         !isnothing(monitor_task) && wait(monitor_task)
     finally
@@ -499,7 +522,11 @@ function run_monitored!(
     if !haskey(time_metrics, "wall_time_seconds")
         time_metrics["wall_time_seconds"] = measured_wall
     end
-    if haskey(time_metrics, "user_cpu_seconds") && haskey(time_metrics, "system_cpu_seconds")
+    if !haskey(time_metrics, "time_max_rss_kb") && peak.peak_rss_kb > 0
+        time_metrics["time_max_rss_kb"] = peak.peak_rss_kb
+    end
+    if haskey(time_metrics, "user_cpu_seconds") &&
+        haskey(time_metrics, "system_cpu_seconds")
         total = time_metrics["user_cpu_seconds"] + time_metrics["system_cpu_seconds"]
         time_metrics["total_cpu_seconds"] = total
         wall = get(time_metrics, "wall_time_seconds", measured_wall)
@@ -519,6 +546,8 @@ function run_monitored!(
         "success" => exit_code == 0,
         "used_usr_bin_time" => use_usr_time,
         "time_unavailable" => !use_usr_time,
+        "monitor_kind" => use_usr_time ? "gnu_time" : "process_monitor",
+        "used_process_monitor" => true,
         "measured_wall_time_seconds" => measured_wall,
         "memory_sample_interval_seconds" => MEMORY_SAMPLE_INTERVAL_SECONDS,
         "process_tree_peak_rss_kb" => peak.peak_rss_kb == 0 ? nothing : peak.peak_rss_kb,
@@ -539,7 +568,9 @@ function metadata_paths(run_dir::String, implementation::String)
     )
 end
 
-function expected_run_shape(cfg::RunConfig, implementation::String, repeat::Int, work_repeats::Int)
+function expected_run_shape(
+    cfg::RunConfig, implementation::String, repeat::Int, work_repeats::Int
+)
     return Dict{String, Any}(
         "mode" => cfg.mode,
         "implementation" => implementation,
@@ -563,7 +594,9 @@ function reusable_existing_run(
     work_repeats::Int,
 )
     get(monitor, "success", false) == true || return false
-    cfg.mode == "formal" && get(monitor, "used_usr_bin_time", false) != true && return false
+    if cfg.mode == "formal"
+        monitor_kind(monitor) in ("gnu_time", "process_monitor") || return false
+    end
     config_path = joinpath(run_dir, "run_config.json")
     isfile(config_path) || return false
     run_cfg = read_json_dict(config_path)
@@ -589,7 +622,11 @@ function row_from_run(
     paths = metadata_paths(run_dir, implementation)
     meta = read_json_dict(paths.metadata)
     time_metrics = get(monitor, "time_metrics", Dict{String, Any}())
-    wall = get(time_metrics, "wall_time_seconds", get(monitor, "measured_wall_time_seconds", nothing))
+    wall = get(
+        time_metrics,
+        "wall_time_seconds",
+        get(monitor, "measured_wall_time_seconds", nothing),
+    )
     user_cpu = get(time_metrics, "user_cpu_seconds", nothing)
     system_cpu = get(time_metrics, "system_cpu_seconds", nothing)
     total_cpu = get(time_metrics, "total_cpu_seconds", nothing)
@@ -599,11 +636,17 @@ function row_from_run(
         "implementation" => implementation,
         "repeat" => repeat,
         "run_id" => run_id(implementation, repeat),
-        "status" => get(monitor, "success", false) == true &&
-                    get(meta, "status", "ok") != "failed" ? "ok" : "failed",
+        "status" =>
+            if get(monitor, "success", false) == true &&
+                get(meta, "status", "ok") != "failed"
+                "ok"
+            else
+                "failed"
+            end,
         "exit_code" => get(monitor, "exit_code", nothing),
         "used_usr_bin_time" => get(monitor, "used_usr_bin_time", false),
         "time_unavailable" => get(monitor, "time_unavailable", false),
+        "monitor_kind" => monitor_kind(monitor),
         "wall_time_seconds" => wall,
         "user_cpu_seconds" => user_cpu,
         "system_cpu_seconds" => system_cpu,
@@ -614,17 +657,29 @@ function row_from_run(
         "process_tree_peak_rss_kb" => get(monitor, "process_tree_peak_rss_kb", nothing),
         "process_tree_peak_pss_kb" => get(monitor, "process_tree_peak_pss_kb", nothing),
         "pss_available" => get(monitor, "pss_available", false),
-        "memory_sample_interval_seconds" => get(monitor, "memory_sample_interval_seconds", nothing),
+        "memory_sample_interval_seconds" =>
+            get(monitor, "memory_sample_interval_seconds", nothing),
         "nlive" => get(meta, "nlive", active_nlive(cfg)),
         "dlogz" => get(meta, "dlogz", active_dlogz(cfg)),
         "queue_size" => get(meta, "queue_size", active_queue_size(cfg)),
-        "threads" => get(meta, "threads", implementation == "julia" ? cfg.threads : nothing),
-        "nproc" => get(meta, "nproc", implementation == "python" ? active_nproc(cfg) : nothing),
-        "pool" => get(meta, "pool", implementation == "python" ? "multiprocessing.Pool" : "Julia threads"),
+        "threads" =>
+            get(meta, "threads", implementation == "julia" ? cfg.threads : nothing),
+        "nproc" =>
+            get(meta, "nproc", implementation == "python" ? active_nproc(cfg) : nothing),
+        "pool" => get(
+            meta,
+            "pool",
+            implementation == "python" ? "multiprocessing.Pool" : "Julia threads",
+        ),
         "bridge_kind" => get(meta, "bridge_kind", nothing),
-        "bridge_init_status" => get(meta, "bridge_init_status", implementation == "julia" ? "not_applicable" : nothing),
+        "bridge_init_status" => get(
+            meta,
+            "bridge_init_status",
+            implementation == "julia" ? "not_applicable" : nothing,
+        ),
         "bridge_init_seconds" => get(meta, "bridge_init_seconds", nothing),
-        "proposal_scheduler" => get(meta, "proposal_scheduler", implementation == "julia" ? "auto" : nothing),
+        "proposal_scheduler" =>
+            get(meta, "proposal_scheduler", implementation == "julia" ? "auto" : nothing),
         "work_repeats" => get(meta, "work_repeats", nothing),
         "sleep_ms" => get(meta, "sleep_ms", cfg.sleep_ms),
         "seed" => get(meta, "seed", nothing),
@@ -641,8 +696,13 @@ function row_from_run(
         "posterior_weighted_covariance_diagonal" =>
             get(meta, "posterior_weighted_covariance_diagonal", nothing),
         "truth" => get(meta, "truth", nothing),
-        "dataset_shape" => get(get(meta, "dataset", Dict{String, Any}()), "dataset_shape", nothing),
-        "python_executable" => get(meta, "python_executable", implementation == "python" ? cfg.python_exe : nothing),
+        "dataset_shape" =>
+            get(get(meta, "dataset", Dict{String, Any}()), "dataset_shape", nothing),
+        "python_executable" => get(
+            meta,
+            "python_executable",
+            implementation == "python" ? cfg.python_exe : nothing,
+        ),
         "python_version" => get(meta, "python_version", nothing),
         "julia_version" => get(meta, "julia_version", nothing),
         "dynesty_file" => get(meta, "dynesty_file", nothing),
@@ -667,7 +727,9 @@ function run_one!(cfg::RunConfig, implementation::String, repeat::Int, work_repe
     monitor_path = joinpath(run_dir, "monitor_metadata.json")
     if cfg.resume && isfile(monitor_path)
         monitor = read_json_dict(monitor_path)
-        if reusable_existing_run(cfg, implementation, repeat, run_dir, monitor, work_repeats)
+        if reusable_existing_run(
+            cfg, implementation, repeat, run_dir, monitor, work_repeats
+        )
             @info "Skipping existing successful run" id
             return row_from_run(cfg, implementation, repeat, run_dir, monitor)
         end
@@ -681,8 +743,7 @@ function run_one!(cfg::RunConfig, implementation::String, repeat::Int, work_repe
             expected...,
             "command" => cmd,
             "python_dynesty_path" => PYTHON_DYNESTY_PATH,
-            "comparison_label" =>
-                "Julia $(cfg.threads) threads direct Julia likelihood vs Python dynesty $(active_nproc(cfg)) worker processes through Julia bridge",
+            "comparison_label" => "Julia $(cfg.threads) threads direct Julia likelihood vs Python dynesty $(active_nproc(cfg)) worker processes through Julia bridge",
             "python_start_method" => cfg.python_start_method,
         ),
     )
@@ -694,31 +755,35 @@ function run_one!(cfg::RunConfig, implementation::String, repeat::Int, work_repe
         allow_missing_usr_time=cfg.allow_missing_usr_time,
     )
     row = row_from_run(cfg, implementation, repeat, run_dir, monitor)
-    row["status"] == "ok" || @warn "Air-quality PE benchmark run failed" id exit_code = row["exit_code"]
+    row["status"] == "ok" ||
+        @warn "Air-quality PE benchmark run failed" id exit_code = row["exit_code"]
     return row
 end
 
-function maybe_plot_pair(cfg::RunConfig, julia_row::Dict{String, Any}, python_row::Dict{String, Any})
+function maybe_plot_pair(
+    cfg::RunConfig, julia_row::Dict{String, Any}, python_row::Dict{String, Any}
+)
     repeat = Int(julia_row["repeat"])
     plot_summary = joinpath(
-        cfg.output_dir,
-        "plots",
-        "air_quality_repeat$(repeat)_julia_vs_python_summary.json",
+        cfg.output_dir, "plots", "air_quality_repeat$(repeat)_julia_vs_python_summary.json"
     )
     plot_png = joinpath(
-        cfg.output_dir,
-        "plots",
-        "air_quality_repeat$(repeat)_julia_vs_python.png",
+        cfg.output_dir, "plots", "air_quality_repeat$(repeat)_julia_vs_python.png"
     )
     missing_samples =
-        !isfile(String(julia_row["samples_file"])) || !isfile(String(python_row["samples_file"]))
+        !isfile(String(julia_row["samples_file"])) ||
+        !isfile(String(python_row["samples_file"]))
     pair_failed = julia_row["status"] != "ok" || python_row["status"] != "ok"
     if cfg.skip_plots || pair_failed || missing_samples
         payload = Dict{String, Any}(
             "status" => cfg.skip_plots ? "skipped" : "failed",
-            "message" => cfg.skip_plots ? "plot generation skipped" :
-                         pair_failed ? "one or both runs failed" :
-                         "one or both runs did not produce samples",
+            "message" => if cfg.skip_plots
+                "plot generation skipped"
+            elseif pair_failed
+                "one or both runs failed"
+            else
+                "one or both runs did not produce samples"
+            end,
             "plot_file" => nothing,
             "method" => nothing,
             "comparison" => "air_quality_julia_vs_python",
@@ -847,28 +912,32 @@ function aggregate_rows(rows)
             Dict{String, Any}(
                 "implementation" => implementation,
                 "successful_runs" => length(group),
-                "median_wall_time_seconds" =>
-                    median_or_nothing([get(row, "wall_time_seconds", nothing) for row in group]),
-                "median_cpu_utilization" =>
-                    median_or_nothing([get(row, "cpu_utilization", nothing) for row in group]),
-                "median_process_tree_peak_rss_kb" =>
-                    median_or_nothing([get(row, "process_tree_peak_rss_kb", nothing) for row in group]),
-                "median_process_tree_peak_pss_kb" =>
-                    median_or_nothing([get(row, "process_tree_peak_pss_kb", nothing) for row in group]),
+                "median_wall_time_seconds" => median_or_nothing([
+                    get(row, "wall_time_seconds", nothing) for row in group
+                ]),
+                "median_cpu_utilization" => median_or_nothing([
+                    get(row, "cpu_utilization", nothing) for row in group
+                ]),
+                "median_process_tree_peak_rss_kb" => median_or_nothing([
+                    get(row, "process_tree_peak_rss_kb", nothing) for row in group
+                ]),
+                "median_process_tree_peak_pss_kb" => median_or_nothing([
+                    get(row, "process_tree_peak_pss_kb", nothing) for row in group
+                ]),
                 "median_nsamples" =>
                     median_or_nothing([get(row, "nsamples", nothing) for row in group]),
                 "median_logz" =>
                     median_or_nothing([get(row, "logz", nothing) for row in group]),
                 "median_logzerr" =>
                     median_or_nothing([get(row, "logzerr", nothing) for row in group]),
-                "median_direct_julia_likelihood_seconds" =>
-                    median_or_nothing([
-                        get(row, "direct_julia_likelihood_median_seconds", nothing) for row in group
-                    ]),
-                "median_python_bridge_likelihood_seconds" =>
-                    median_or_nothing([
-                        get(row, "python_bridge_likelihood_median_seconds", nothing) for row in group
-                    ]),
+                "median_direct_julia_likelihood_seconds" => median_or_nothing([
+                    get(row, "direct_julia_likelihood_median_seconds", nothing) for
+                    row in group
+                ]),
+                "median_python_bridge_likelihood_seconds" => median_or_nothing([
+                    get(row, "python_bridge_likelihood_median_seconds", nothing) for
+                    row in group
+                ]),
             ),
         )
     end
@@ -884,6 +953,8 @@ function write_outputs(cfg::RunConfig, rows, plot_rows, calibration)
         "status",
         "exit_code",
         "used_usr_bin_time",
+        "time_unavailable",
+        "monitor_kind",
         "wall_time_seconds",
         "user_cpu_seconds",
         "system_cpu_seconds",
@@ -962,8 +1033,7 @@ function write_outputs(cfg::RunConfig, rows, plot_rows, calibration)
     payload = Dict{String, Any}(
         "created_at" => string(now()),
         "mode" => cfg.mode,
-        "comparison_label" =>
-            "Julia $(cfg.threads) threads direct Julia likelihood vs Python dynesty $(active_nproc(cfg)) worker processes through Julia bridge",
+        "comparison_label" => "Julia $(cfg.threads) threads direct Julia likelihood vs Python dynesty $(active_nproc(cfg)) worker processes through Julia bridge",
         "output_dir" => cfg.output_dir,
         "python_dynesty_path" => PYTHON_DYNESTY_PATH,
         "configuration" => Dict(
@@ -990,9 +1060,12 @@ function write_outputs(cfg::RunConfig, rows, plot_rows, calibration)
             "work_repeats" => calibration["work_repeats"],
             "sleep_ms" => cfg.sleep_ms,
             "python_start_method" => cfg.python_start_method,
-            "used_usr_bin_time" => any(get(row, "used_usr_bin_time", false) == true for row in rows),
+            "used_usr_bin_time" =>
+                any(get(row, "used_usr_bin_time", false) == true for row in rows),
+            "monitor_kind" => monitor_kind(),
             "time_command" => TIME_COMMAND,
             "time_command_available" => time_command_available(),
+            "process_monitor_available" => Sys.islinux(),
             "memory_sample_interval_seconds" => MEMORY_SAMPLE_INTERVAL_SECONDS,
         ),
         "environment" => Dict(
@@ -1001,18 +1074,27 @@ function write_outputs(cfg::RunConfig, rows, plot_rows, calibration)
             "MKL_NUM_THREADS" => "1",
         ),
         "likelihood_model" => air_quality_dataset_metadata(;
-            work_repeats=Int(calibration["work_repeats"]),
-            sleep_ms=cfg.sleep_ms,
+            work_repeats=Int(calibration["work_repeats"]), sleep_ms=cfg.sleep_ms
         ),
         "bridge" => Dict(
             "preferred" => "juliacall",
             "fallback" => "PyJulia",
-            "observed_kinds" => sort(collect(Set([
-                String(row["bridge_kind"]) for row in rows if !isnothing(row["bridge_kind"])
-            ]))),
-            "observed_statuses" => sort(collect(Set([
-                String(row["bridge_init_status"]) for row in rows if !isnothing(row["bridge_init_status"])
-            ]))),
+            "observed_kinds" => sort(
+                collect(
+                    Set([
+                        String(row["bridge_kind"]) for
+                        row in rows if !isnothing(row["bridge_kind"])
+                    ]),
+                ),
+            ),
+            "observed_statuses" => sort(
+                collect(
+                    Set([
+                        String(row["bridge_init_status"]) for
+                        row in rows if !isnothing(row["bridge_init_status"])
+                    ]),
+                ),
+            ),
         ),
         "calibration" => calibration,
         "runs" => rows,
@@ -1021,7 +1103,12 @@ function write_outputs(cfg::RunConfig, rows, plot_rows, calibration)
     )
     summary_json = joinpath(cfg.output_dir, "summary.json")
     write_json(summary_json, payload)
-    return (summary_csv=summary_csv, summary_json=summary_json, plot_csv=plot_csv, calibration_json=calibration_json)
+    return (
+        summary_csv=summary_csv,
+        summary_json=summary_json,
+        plot_csv=plot_csv,
+        calibration_json=calibration_json,
+    )
 end
 
 function choose_calibration(cfg::RunConfig)
@@ -1039,8 +1126,7 @@ function choose_calibration(cfg::RunConfig)
         )
     end
     selected["dataset"] = air_quality_dataset_metadata(;
-        work_repeats=Int(selected["work_repeats"]),
-        sleep_ms=cfg.sleep_ms,
+        work_repeats=Int(selected["work_repeats"]), sleep_ms=cfg.sleep_ms
     )
     return selected
 end
@@ -1051,8 +1137,9 @@ function main(args=ARGS)
     if !isdir(PYTHON_DYNESTY_PATH)
         error("expected read-only Python dynesty source at $PYTHON_DYNESTY_PATH")
     end
-    if !time_command_available() && (cfg.mode == "formal" || !cfg.allow_missing_usr_time)
-        error("required /usr/bin/time -v is missing")
+    if !time_command_available()
+        @warn "/usr/bin/time is missing; using Julia/Linux process monitor for wall time and process-tree RSS/PSS metrics" mode =
+            cfg.mode
     end
     calibration = choose_calibration(cfg)
     work_repeats = Int(calibration["work_repeats"])
@@ -1066,15 +1153,19 @@ function main(args=ARGS)
             refresh_overlay_plots!(cfg, rows, plot_rows_by_key)
             plot_rows = ordered_plot_rows(plot_rows_by_key)
             outputs = write_outputs(cfg, rows, plot_rows, calibration)
-            @info "Updated air-quality benchmark summaries" summary_csv = outputs.summary_csv summary_json = outputs.summary_json
+            @info "Updated air-quality benchmark summaries" summary_csv =
+                outputs.summary_csv summary_json = outputs.summary_json
             if row["status"] != "ok"
-                error("benchmark run $(row["run_id"]) failed; see $(row["stderr_file"]) and $(row["stdout_file"])")
+                error(
+                    "benchmark run $(row["run_id"]) failed; see $(row["stderr_file"]) and $(row["stdout_file"])",
+                )
             end
         end
     catch err
         plot_rows = ordered_plot_rows(plot_rows_by_key)
         outputs = write_outputs(cfg, rows, plot_rows, calibration)
-        @error "Air-quality benchmark stopped before completing all requested runs" error = err summary_json = outputs.summary_json
+        @error "Air-quality benchmark stopped before completing all requested runs" error =
+            err summary_json = outputs.summary_json
         rethrow()
     end
     plot_rows = ordered_plot_rows(plot_rows_by_key)

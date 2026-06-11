@@ -4,27 +4,16 @@ using Random
 abstract type AbstractMapBackend end
 
 const PARALLEL_OPTIONS = (:serial, :none, :threads, :threaded, :distributed)
-const POOL_USAGE_KEYS = (
-    :initial,
-    :prior_transform,
-    :loglikelihood,
-    :proposals,
-    :bounds,
-    :stopping,
-)
+const PARALLEL_POLICY_KEYS = (:initialization, :proposals, :bounds, :stopping)
 
 """
-    PoolUsage(; initial=true, prior_transform=true, loglikelihood=true,
-              proposals=true, bounds=false, stopping=false)
+    ParallelPolicy(; initialization=true, proposals=true, bounds=false, stopping=false)
 
 Julia-native policy describing which sampler paths may use the configured map
-backend. `use_pool` dictionaries from Python-adjacent workflows are parsed into
-this type; the backend object itself remains Julia-native.
+backend.
 """
-Base.@kwdef struct PoolUsage
-    initial::Bool = true
-    prior_transform::Bool = true
-    loglikelihood::Bool = true
+Base.@kwdef struct ParallelPolicy
+    initialization::Bool = true
     proposals::Bool = true
     bounds::Bool = false
     stopping::Bool = false
@@ -87,18 +76,26 @@ function _parallel_stats_from_config(config)
         initial_evaluation_count=Int(get(cfg, :initial_evaluation_count, 0)),
         initial_evaluation_tasks=Int(get(cfg, :initial_evaluation_tasks, 0)),
         initial_evaluation_wall_time=Float64(get(cfg, :initial_evaluation_wall_time, 0.0)),
-        initial_evaluation_backend_wall_time=Float64(get(cfg, :initial_evaluation_backend_wall_time, 0.0)),
+        initial_evaluation_backend_wall_time=Float64(
+            get(cfg, :initial_evaluation_backend_wall_time, 0.0)
+        ),
         proposal_tasks_submitted=Int(get(cfg, :proposal_tasks_submitted, 0)),
         proposal_batches_submitted=Int(get(cfg, :proposal_batches_submitted, 0)),
         proposal_wall_time=Float64(get(cfg, :proposal_wall_time, 0.0)),
         proposal_backend_wall_time=Float64(get(cfg, :proposal_backend_wall_time, 0.0)),
-        proposal_queue_wait_wall_time=Float64(get(cfg, :proposal_queue_wait_wall_time, 0.0)),
+        proposal_queue_wait_wall_time=Float64(
+            get(cfg, :proposal_queue_wait_wall_time, 0.0)
+        ),
         bound_update_count=Int(get(cfg, :bound_update_count, 0)),
         bound_update_wall_time=Float64(get(cfg, :bound_update_wall_time, 0.0)),
-        bound_update_backend_wall_time=Float64(get(cfg, :bound_update_backend_wall_time, 0.0)),
+        bound_update_backend_wall_time=Float64(
+            get(cfg, :bound_update_backend_wall_time, 0.0)
+        ),
         stop_function_count=Int(get(cfg, :stop_function_count, 0)),
         stop_function_wall_time=Float64(get(cfg, :stop_function_wall_time, 0.0)),
-        stop_function_backend_wall_time=Float64(get(cfg, :stop_function_backend_wall_time, 0.0)),
+        stop_function_backend_wall_time=Float64(
+            get(cfg, :stop_function_backend_wall_time, 0.0)
+        ),
         map_backend_calls=Int(get(cfg, :map_backend_calls, 0)),
         map_backend_wall_time=Float64(get(cfg, :map_backend_wall_time, 0.0)),
     )
@@ -126,7 +123,9 @@ function _record_proposal_batch!(
     return stats
 end
 
-function _record_bound_update!(stats::ParallelStats, wall_time::Real; backend_time::Real=0.0)
+function _record_bound_update!(
+    stats::ParallelStats, wall_time::Real; backend_time::Real=0.0
+)
     stats.bound_update_count += 1
     stats.bound_update_wall_time += Float64(wall_time)
     stats.bound_update_backend_wall_time += Float64(backend_time)
@@ -134,7 +133,9 @@ function _record_bound_update!(stats::ParallelStats, wall_time::Real; backend_ti
     return stats
 end
 
-function _record_stop_function!(stats::ParallelStats, wall_time::Real; backend_time::Real=0.0)
+function _record_stop_function!(
+    stats::ParallelStats, wall_time::Real; backend_time::Real=0.0
+)
     stats.stop_function_count += 1
     stats.stop_function_wall_time += Float64(wall_time)
     stats.stop_function_backend_wall_time += Float64(backend_time)
@@ -152,7 +153,8 @@ function _merge_parallel_stats!(target::ParallelStats, source::ParallelStats)
     target.initial_evaluation_count += source.initial_evaluation_count
     target.initial_evaluation_tasks += source.initial_evaluation_tasks
     target.initial_evaluation_wall_time += source.initial_evaluation_wall_time
-    target.initial_evaluation_backend_wall_time += source.initial_evaluation_backend_wall_time
+    target.initial_evaluation_backend_wall_time +=
+        source.initial_evaluation_backend_wall_time
     target.proposal_tasks_submitted += source.proposal_tasks_submitted
     target.proposal_batches_submitted += source.proposal_batches_submitted
     target.proposal_wall_time += source.proposal_wall_time
@@ -169,45 +171,30 @@ function _merge_parallel_stats!(target::ParallelStats, source::ParallelStats)
     return target
 end
 
-function _pool_usage_key(raw_key)
+function _parallel_policy_key(raw_key)
     if raw_key isa Symbol
         key = raw_key
-    elseif raw_key isa AbstractString
-        key = Symbol(strip(String(raw_key)))
     else
-        throw(
-            ArgumentError(
-                "pool usage keys must be symbols or strings; got $(repr(raw_key))",
-            ),
-        )
+        throw(ArgumentError("parallel policy keys must be symbols; got $(repr(raw_key))"))
     end
-    key === :logl && return :loglikelihood
-    key === :loglike && return :loglikelihood
-    key === :likelihood && return :loglikelihood
-    key === :proposal && return :proposals
-    key === :propose && return :proposals
-    key === :propose_point && return :proposals
-    key === :evolve && return :proposals
-    key === :update_bound && return :bounds
-    key === :bound && return :bounds
-    key === :stop_function && return :stopping
-    key === :stopfn && return :stopping
-    key === :stop && return :stopping
-    key in POOL_USAGE_KEYS || throw(
+    key in PARALLEL_POLICY_KEYS || throw(
         ArgumentError(
-            "unrecognized pool usage key $(repr(raw_key)); expected one of $(collect(POOL_USAGE_KEYS)) or a documented use_pool alias",
+            "unrecognized parallel policy key $(repr(raw_key)); expected one of $(collect(PARALLEL_POLICY_KEYS))",
         ),
     )
     return key
 end
 
-function _pool_usage_bool(raw_value, key::Symbol)
-    raw_value isa Bool ||
-        throw(ArgumentError("pool usage key $(repr(key)) must be Bool; got $(repr(raw_value))"))
+function _parallel_policy_bool(raw_value, key::Symbol)
+    raw_value isa Bool || throw(
+        ArgumentError(
+            "parallel policy key $(repr(key)) must be Bool; got $(repr(raw_value))"
+        ),
+    )
     return raw_value
 end
 
-function _pool_usage_pairs(value)
+function _parallel_policy_pairs(value)
     if value isa AbstractDict
         return pairs(value)
     elseif value isa NamedTuple
@@ -215,49 +202,42 @@ function _pool_usage_pairs(value)
     else
         throw(
             ArgumentError(
-                "pool_usage/use_pool must be PoolUsage, Dict, or NamedTuple; got $(typeof(value))",
+                "parallel_policy must be ParallelPolicy, Dict, or NamedTuple; got $(typeof(value))",
             ),
         )
     end
 end
 
-function _pool_usage_from_pairs(value)
-    cfg = _pool_usage_config(PoolUsage())
-    for (raw_key, raw_value) in _pool_usage_pairs(value)
-        key = _pool_usage_key(raw_key)
-        cfg[key] = _pool_usage_bool(raw_value, key)
+function _parallel_policy_from_pairs(value)
+    cfg = _parallel_policy_config(ParallelPolicy())
+    for (raw_key, raw_value) in _parallel_policy_pairs(value)
+        key = _parallel_policy_key(raw_key)
+        cfg[key] = _parallel_policy_bool(raw_value, key)
     end
-    return PoolUsage(;
-        initial=cfg[:initial],
-        prior_transform=cfg[:prior_transform],
-        loglikelihood=cfg[:loglikelihood],
+    return ParallelPolicy(;
+        initialization=cfg[:initialization],
         proposals=cfg[:proposals],
         bounds=cfg[:bounds],
         stopping=cfg[:stopping],
     )
 end
 
-_pool_usage(value::PoolUsage) = value
-_pool_usage(value) = isnothing(value) ? PoolUsage() : _pool_usage_from_pairs(value)
+_parallel_policy(value::ParallelPolicy) = value
+_parallel_policy(value) =
+    isnothing(value) ? ParallelPolicy() : _parallel_policy_from_pairs(value)
 
-function _get_pool_usage(pool_usage=nothing, use_pool=nothing)
-    if !isnothing(pool_usage) && !isnothing(use_pool)
-        throw(ArgumentError("specify either pool_usage or use_pool, not both"))
-    end
-    return _pool_usage(isnothing(pool_usage) ? use_pool : pool_usage)
+_get_parallel_policy(parallel_policy=nothing) = _parallel_policy(parallel_policy)
+
+function _parallel_policy_config(usage::ParallelPolicy)
+    return Dict{Symbol, Any}(key => getfield(usage, key) for key in PARALLEL_POLICY_KEYS)
 end
 
-function _pool_usage_config(usage::PoolUsage)
-    return Dict{Symbol, Any}(key => getfield(usage, key) for key in POOL_USAGE_KEYS)
+function _parallel_policy_from_config(config)
+    isnothing(config) && return ParallelPolicy()
+    return _parallel_policy(config)
 end
 
-function _pool_usage_from_config(config)
-    isnothing(config) && return PoolUsage()
-    return _pool_usage(config)
-end
-
-_pool_usage_initial(usage::PoolUsage) =
-    usage.initial && usage.prior_transform && usage.loglikelihood
+_parallel_policy_initial(policy::ParallelPolicy) = policy.initialization
 
 struct SerialMapBackend <: AbstractMapBackend
     queue_size::Int
@@ -302,18 +282,16 @@ backend_kind(::DistributedMapBackend) = :distributed
 function _parallel_kind(parallel)
     if parallel isa Symbol
         kind = Symbol(lowercase(String(parallel)))
-    elseif parallel isa AbstractString
-        kind = Symbol(lowercase(strip(String(parallel))))
     else
         throw(
             ArgumentError(
-                "parallel must be one of $(collect(PARALLEL_OPTIONS)); got $(repr(parallel))"
+                "parallel must be one of $(collect(PARALLEL_OPTIONS)); got $(repr(parallel))",
             ),
         )
     end
     kind in PARALLEL_OPTIONS || throw(
         ArgumentError(
-            "unsupported parallel $(repr(parallel)); expected one of $(collect(PARALLEL_OPTIONS))"
+            "unsupported parallel $(repr(parallel)); expected one of $(collect(PARALLEL_OPTIONS))",
         ),
     )
     return kind === :threads ? :threaded : (kind === :none ? :serial : kind)
@@ -489,10 +467,7 @@ function map_ordered(backend::DistributedMapBackend, f, inputs)
         !isnothing(unwrapped) && throw(unwrapped)
         throw(
             MapTaskError(
-                backend_kind(backend),
-                0,
-                "distributed map setup/serialization",
-                err,
+                backend_kind(backend), 0, "distributed map setup/serialization", err
             ),
         )
     end

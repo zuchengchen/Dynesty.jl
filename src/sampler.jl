@@ -31,8 +31,8 @@ row-major convention (`nsamples x ndim`), while Julia callables receive
 one-dimensional `Vector{Float64}` inputs.
 
 Sampler-level parallel configuration is available with `parallel`,
-`map_backend`, `queue_size`, and `pool_usage`. The backend is used according to
-the [`PoolUsage`](@ref) policy.
+`map_backend`, `queue_size`, and `parallel_policy`. The backend is used according to
+the [`ParallelPolicy`](@ref) policy.
 """
 mutable struct NestedSampler{L, P}
     loglikelihood::L
@@ -44,7 +44,7 @@ mutable struct NestedSampler{L, P}
     copy_inputs::Bool
     rng::AbstractRNG
     map_backend::AbstractMapBackend
-    pool_usage::PoolUsage
+    parallel_policy::ParallelPolicy
     parallel_stats::ParallelStats
     bound_kind::Symbol
     sample_kind::Symbol
@@ -93,11 +93,10 @@ mutable struct NestedSampler{L, P}
 end
 
 function _option_symbol(value, allowed, kind::AbstractString)
-    value isa Symbol && (sym = value)
-    value isa AbstractString && (sym = Symbol(value))
-    if !(value isa Union{Symbol, AbstractString})
+    if !(value isa Symbol)
         throw(ArgumentError("$kind must be one of $(collect(allowed)); got $(repr(value))"))
     end
+    sym = value
     sym in allowed || throw(
         ArgumentError(
             "unsupported $kind $(repr(value)); expected one of $(collect(allowed))"
@@ -305,7 +304,7 @@ function _initialize_live_points(
     ndim::Integer,
     rng::AbstractRNG=Random.default_rng(),
     map_backend::AbstractMapBackend=SerialMapBackend(),
-    pool_usage::PoolUsage=PoolUsage(),
+    parallel_policy::ParallelPolicy=ParallelPolicy(),
     blob::Bool=false,
     copy_inputs::Bool=false,
 )
@@ -333,7 +332,8 @@ function _initialize_live_points(
             cur_logl = zeros(Float64, nlive_i)
             cur_blobs = blob ? Vector{Any}(undef, nlive_i) : nothing
             backend_time = 0.0
-            if map_backend isa SerialMapBackend || !_pool_usage_initial(pool_usage)
+            if map_backend isa SerialMapBackend ||
+                !_parallel_policy_initial(parallel_policy)
                 for i in 1:nlive_i
                     u = vec(cur_u[i, :])
                     v, logl, out_blob = _evaluate_live_point(
@@ -351,12 +351,7 @@ function _initialize_live_points(
                     input -> begin
                         i, u = input
                         v, logl, out_blob = _evaluate_live_point(
-                            prior_transform,
-                            loglikelihood,
-                            u,
-                            ndim_i;
-                            blob,
-                            copy_inputs,
+                            prior_transform, loglikelihood, u, ndim_i; blob, copy_inputs
                         )
                         return (i, v, logl, out_blob)
                     end,
@@ -469,12 +464,10 @@ function NestedSampler(
     update_interval=nothing,
     first_update=nothing,
     rng=nothing,
-    rstate=nothing,
     parallel=:serial,
     map_backend=nothing,
     queue_size=nothing,
-    pool_usage=nothing,
-    use_pool=nothing,
+    parallel_policy=nothing,
     proposal_scheduler=:batch,
     live_points=nothing,
     enlarge=nothing,
@@ -497,19 +490,9 @@ function NestedSampler(
     ncdim_i = isnothing(ncdim) ? ndim_i : Int(ncdim)
     1 <= ncdim_i <= ndim_i ||
         throw(ArgumentError("ncdim must be between 1 and ndim; got $ncdim_i"))
-    if !isnothing(rng) && !isnothing(rstate)
-        throw(ArgumentError("specify either rng or rstate, not both"))
-    end
-    rng_obj = if !isnothing(rng)
-        rng
-    elseif !isnothing(rstate)
-        rstate
-    else
-        Random.default_rng()
-    end
-    rng_obj isa AbstractRNG || throw(ArgumentError("rng/rstate must be an AbstractRNG"))
+    rng_obj = _rng_from_user(rng)
     backend = _get_map_backend(parallel, map_backend, queue_size)
-    usage = _get_pool_usage(pool_usage, use_pool)
+    policy = _get_parallel_policy(parallel_policy)
     scheduler = _proposal_scheduler_symbol(proposal_scheduler)
     first_update_d =
         isnothing(first_update) ? Dict{Symbol, Any}() : _check_first_update(first_update)
@@ -540,7 +523,7 @@ function NestedSampler(
         ndim=ndim_i,
         rng=rng_obj,
         map_backend=backend,
-        pool_usage=usage,
+        parallel_policy=policy,
         blob,
         copy_inputs,
     )
@@ -557,7 +540,7 @@ function NestedSampler(
         copy_inputs,
         rng_obj,
         backend,
-        usage,
+        policy,
         init_stats,
         bound_kind,
         sample_kind,
@@ -627,10 +610,12 @@ function _loglike_wrapper(loglikelihood, blob::Bool, copy_inputs::Bool)
 end
 
 _bound_update_backend_supported(::AbstractBound) = false
-_bound_update_backend_supported(::Union{Ellipsoid, MultiEllipsoid, RadFriends, SupFriends}) = true
+_bound_update_backend_supported(
+    ::Union{Ellipsoid, MultiEllipsoid, RadFriends, SupFriends}
+) = true
 
 function _bound_update_backend(sampler::NestedSampler)
-    sampler.pool_usage.bounds || return nothing
+    sampler.parallel_policy.bounds || return nothing
     sampler.bound_bootstrap > 0 || return nothing
     sampler.map_backend isa SerialMapBackend && return nothing
     _bound_update_backend_supported(sampler.bound) || return nothing
@@ -775,11 +760,7 @@ function _proposal_sample(
             rng,
         )
     else
-        throw(
-            ArgumentError(
-                "unsupported internal sampler $(typeof(internal_sampler))"
-            ),
-        )
+        throw(ArgumentError("unsupported internal sampler $(typeof(internal_sampler))"))
     end
 end
 
@@ -855,7 +836,7 @@ function _proposal_queue_size(sampler::NestedSampler)
 end
 
 _proposal_queue_enabled(sampler::NestedSampler) =
-    sampler.pool_usage.proposals &&
+    sampler.parallel_policy.proposals &&
     !(sampler.map_backend isa SerialMapBackend) &&
     _proposal_queue_size(sampler) > 1
 
@@ -938,14 +919,7 @@ function _proposal_sample_task(
             rng=MersenneTwister(seed),
         )
     catch err
-        throw(
-            MapTaskError(
-                backend_kind_value,
-                input.slot,
-                _input_context(input),
-                err,
-            ),
-        )
+        throw(MapTaskError(backend_kind_value, input.slot, _input_context(input), err))
     end
 end
 
@@ -953,7 +927,8 @@ function _maybe_warn_cheap_likelihood!(sampler::NestedSampler)
     sampler.cheap_likelihood_hint_issued && return sampler
     sampler.proposal_scheduler === :async && return sampler
     stats = sampler.parallel_stats
-    stats.proposal_tasks_submitted >= max(32, 4 * _proposal_queue_size(sampler)) || return sampler
+    stats.proposal_tasks_submitted >= max(32, 4 * _proposal_queue_size(sampler)) ||
+        return sampler
     stats.proposal_backend_wall_time > 0 || return sampler
     avg_task_wall = stats.proposal_backend_wall_time / stats.proposal_tasks_submitted
     avg_task_wall <= 2.0e-5 || return sampler
@@ -988,8 +963,9 @@ function _fill_proposal_queue!(sampler::NestedSampler, loglstar::Real)
     backend_time = time() - backend_start
     empty!(sampler.proposal_queue)
     for ret in mapped
-        ret isa SamplerReturn ||
-            throw(ErrorException("proposal task returned $(typeof(ret)), expected SamplerReturn"))
+        ret isa SamplerReturn || throw(
+            ErrorException("proposal task returned $(typeof(ret)), expected SamplerReturn"),
+        )
         push!(sampler.proposal_queue, ret)
     end
     sampler.proposal_queue_loglstar = Float64(loglstar)
@@ -1025,10 +1001,10 @@ function _proposal_async_spawn!(sampler::NestedSampler, loglstar::Real)
         $input,
         $prior_transform,
         $loglikelihood;
-        blob=$blob,
-        copy_inputs=$copy_inputs,
-        backend_kind_value=$backend_kind_value,
-        seed=$seed,
+        blob=($blob),
+        copy_inputs=($copy_inputs),
+        backend_kind_value=($backend_kind_value),
+        seed=($seed),
     )
     push!(sampler.proposal_async_tasks, task)
     push!(sampler.proposal_async_inputs, input)
@@ -1072,8 +1048,9 @@ function _take_proposal_async!(sampler::NestedSampler, loglstar::Real)
     if wait_time > 0
         _record_map_backend!(sampler.parallel_stats, wait_time)
     end
-    ret isa SamplerReturn ||
-        throw(ErrorException("proposal task returned $(typeof(ret)), expected SamplerReturn"))
+    ret isa SamplerReturn || throw(
+        ErrorException("proposal task returned $(typeof(ret)), expected SamplerReturn")
+    )
     push!(sampler.proposal_queue, ret)
     sampler.proposal_queue_loglstar = Float64(loglstar)
     sampler.proposal_batches_submitted += 1
@@ -1091,7 +1068,8 @@ function _new_point!(sampler::NestedSampler, loglstar::Real)
             ret = _take_proposal_async!(sampler, loglstar)
             ncall_accum += ret.ncalls
             sampler.proposal_async_since_update += 1
-            should_update = sampler.proposal_async_since_update >= _proposal_queue_size(sampler)
+            should_update =
+                sampler.proposal_async_since_update >= _proposal_queue_size(sampler)
             _tune_internal_sampler!(sampler, ret; update=should_update)
             if should_update
                 sampler.proposal_async_since_update = 0
@@ -1422,8 +1400,6 @@ function run_nested!(
     return sampler
 end
 
-run_nested(sampler::NestedSampler; kwargs...) = run_nested!(sampler; kwargs...)
-
 function _matrix_from_record(record::RunRecord, key::Symbol, ndim::Int)
     n = length(record[key])
     out = Matrix{Float64}(undef, n, ndim)
@@ -1487,7 +1463,7 @@ function sampler_snapshot(sampler::NestedSampler)
         :copy_inputs => sampler.copy_inputs,
         :rng => sampler.rng,
         :map_backend_config => _backend_config(sampler.map_backend),
-        :pool_usage_config => _pool_usage_config(sampler.pool_usage),
+        :parallel_policy_config => _parallel_policy_config(sampler.parallel_policy),
         :parallel_stats => _parallel_stats_config(sampler.parallel_stats),
         :bound_kind => sampler.bound_kind,
         :sample_kind => sampler.sample_kind,
@@ -1544,7 +1520,9 @@ function _restore_nested_sampler(state::AbstractDict, loglikelihood, prior_trans
         Bool(state[:copy_inputs]),
         state[:rng],
         _map_backend_from_config(get(state, :map_backend_config, nothing)),
-        _pool_usage_from_config(get(state, :pool_usage_config, nothing)),
+        _parallel_policy_from_config(
+            get(state, :parallel_policy_config, get(state, :pool_usage_config, nothing))
+        ),
         _parallel_stats_from_config(get(state, :parallel_stats, nothing)),
         Symbol(state[:bound_kind]),
         Symbol(state[:sample_kind]),

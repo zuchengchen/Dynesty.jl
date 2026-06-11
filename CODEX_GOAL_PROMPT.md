@@ -14,7 +14,8 @@ Hard requirements:
 - Do not commit Manifest.toml.
 - Do not modify ../dynesty.
 - Use MIT license attribution from ../dynesty.
-- API should be Julia-native, not a mechanical Python signature clone.
+- API should be strictly Julia-native, not a mechanical Python signature clone
+  and not a Python-compatible alias layer.
 - Behavior, algorithms, numerical semantics, and edge cases should align with Python dynesty unless an intentional difference is documented.
 - Final completion target is full-project migration, not only the core sampler.
 - All Python py/dynesty modules must have Julia equivalents or documented Julia-native replacements.
@@ -100,15 +101,18 @@ Core design decisions:
   - checkpoint!(sampler, path)
   - add_live_points!(sampler)
   - results(sampler)
-- Also provide low-cost compatibility aliases where helpful:
-  - run_nested(sampler) may call run_nested!(sampler).
-  - bound and sample should accept Symbol and common Python string options, e.g. :multi and "multi".
-  - rstate may be accepted as a documented compatibility alias for rng if simple to support.
+- Python dynesty is the algorithm, behavior, workflow, and test reference; it is
+  not the public API surface reference.
+- Do not provide Python-compatible public aliases:
+  - mutating APIs use bang forms such as run_nested!, checkpoint!, add_live_points!, and combine_runs!.
+  - enum-like public options accept Symbol values or Julia types only; strings are reserved for true text/path/label metadata.
+  - random seeding uses rng only, accepting an AbstractRNG or integer seed.
+  - rstate, random_state, use_pool, PoolUsage, no-bang mutating aliases, Python-style args/kwargs wrappers, and public Python index-conversion helpers are intentionally unsupported.
 - Do not mechanically support Python logl_args/logl_kwargs/ptform_args/ptform_kwargs; Julia users should use closures or callable objects.
 - Results core fields should be public and stable.
 - Sampler internal fields are not all public API.
-- Use res.blobs as the Julia field; document Python res.blob -> Julia res.blobs.
-- Use 1-based Julia indices for periodic/reflective dimensions. Do not auto-accept Python 0-based indices. Provide an explicit helper such as from_python_indices if useful.
+- Use Julia-native Results fields such as res.blobs, res.boundidx, and res.samples_batch. Python fixture schema conversion belongs in test helpers, not public Results aliases.
+- Use 1-based Julia indices for periodic/reflective dimensions. Do not auto-accept Python 0-based indices and do not expose public Python index conversion helpers.
 - Default parameters and :auto heuristics should align with Python dynesty unless an intentional difference is documented.
 - First version core numerical type commitment is Float64.
 - prior_transform outputs should support the same practical extent as Python dynesty: mainly real vectors and tuple/list-like outputs that can be normalized to Float64 vectors. Do not promise arbitrary complex/manifold object support as part of this migration. Users needing complex or non-Euclidean models should map them through real coordinates in prior_transform/loglikelihood.
@@ -177,7 +181,9 @@ Persistence:
 
 Parallelism:
 - Stage 1 must create a full Julia-native parallel execution system.
-- Do not copy the surface shape of Python Pool, but cover its use_pool/queue_size capabilities.
+- Do not copy the surface shape of Python Pool or expose use_pool. Cover the
+  underlying queue-size and fine-grained workflow capabilities with Julia-native
+  backends and ParallelPolicy.
 - Implement:
   - SerialMapBackend
   - ThreadedMapBackend
@@ -209,7 +215,7 @@ Testing and Python cross-checks:
 - Test grades:
   - A: public API and core numerical functions. Must have direct Julia tests and Python fixture cross-checks.
   - B: internal helpers that affect algorithm behavior. Must have direct or indirect Julia tests. Use Python fixtures when inputs/outputs are stable.
-  - C: thin wrappers, display, printing, compatibility aliases, plotting helpers, and demo/doc helpers. Cover by caller tests, smoke tests, snapshots, or migration-matrix notes.
+  - C: thin wrappers, display, printing, plotting helpers, and demo/doc helpers. Cover by caller tests, smoke tests, snapshots, or migration-matrix notes.
 - Python cross-check strategy:
   - Use reference fixtures generated from ../dynesty.
   - Default tests should read fixtures, not call Python live.
@@ -420,7 +426,6 @@ Stage 1: Foundations, fixtures, persistence, and parallel framework
   - logvol_prefactor
   - compute_integrals baseline
   - progress_integration baseline
-  - from_python_indices if useful.
 - Implement fixture infrastructure:
   - test/reference/python/generate_reference.py
   - fixtures index JSON
@@ -486,8 +491,8 @@ Stage 6: Results postprocessing, merge, resampling, and error estimates
 - Add Python fixture cross-checks.
 - Commit.
 
-Stage 7: DynamicNestedSampler
-- Implement DynamicNestedSampler and dynamic sampler internals.
+Stage 7: DynamicSampler
+- Implement DynamicSampler and dynamic sampler internals.
 - Implement compute_weights, weight_function, stopping_function, batch configuration, dynamic run flow, batch metadata.
 - Integrate checkpoint/restore for dynamic sampler.
 - Add Gaussian/Eggbox dynamic tests and Python reference statistics.
@@ -519,7 +524,7 @@ Definition of done:
 - `using Dynesty` works.
 - `julia --project=. -e 'using Pkg; Pkg.test()'` passes.
 - Core static NestedSampler examples run.
-- DynamicNestedSampler examples run.
+- DynamicSampler examples run.
 - Results, checkpoint, restore, evaluation history, and archive save/load work according to the persistence design.
 - Serial, threaded, and distributed map backends exist and are tested according to default/extended policy.
 - Python reference fixtures exist and are documented.
@@ -534,4 +539,3 @@ Definition of done:
 - README explains installation, quickstart, Python compatibility notes, persistence, parallelism, plotting, examples, and citation.
 - ../dynesty remains unmodified.
 ```
-

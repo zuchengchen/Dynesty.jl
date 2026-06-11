@@ -18,7 +18,7 @@ Examples:
 using Dynesty
 
 try
-    from_python_indices([0, 3]; ndim=3)
+    get_nonbounded(3, [0], nothing)
 catch err
     typeof(err), sprint(showerror, err)
 end
@@ -32,6 +32,6 @@ catch err
 end
 ```
 
-Julia APIs use 1-based indices for periodic and reflective dimensions. Use
-[`from_python_indices`](@ref) when translating explicit Python 0-based index
-lists.
+Julia APIs use 1-based indices for periodic and reflective dimensions. Python
+0-based index lists should be translated at the migration boundary before
+calling Dynesty.jl.

@@ -15,6 +15,27 @@ using Random
 #
 # Outputs are written under examples/output/pe_parallel_compare/ by default.
 
+function usage()
+    return """
+    Usage:
+      julia --threads=31 --project=. examples/pe_parallel_julia.jl [options]
+
+    Options:
+      --output-dir PATH
+      --nlive N
+      --quick-nlive N
+      --dlogz X
+      --quick-dlogz X
+      --seed N
+      --queue-size N
+      --proposal-scheduler auto|batch|async
+      --likelihood-cost cheap|medium|heavy
+      --sleep-ms X
+      --work-size N
+      --quick
+    """
+end
+
 const PARAM_NAMES = ["theta1", "theta2", "theta3", "theta4"]
 const TRUE_THETA = [0.65, -0.35, 0.45, -0.10]
 const POSTERIOR_COV = [
@@ -47,7 +68,9 @@ function _default_work_size(cost::AbstractString)
     end
 end
 
-function make_loglikelihood(; likelihood_cost::AbstractString="cheap", sleep_ms::Real=0.0, work_size=nothing)
+function make_loglikelihood(;
+    likelihood_cost::AbstractString="cheap", sleep_ms::Real=0.0, work_size=nothing
+)
     work = isnothing(work_size) ? _default_work_size(likelihood_cost) : Int(work_size)
     sleep_seconds = Float64(sleep_ms) / 1000
     work >= 0 || throw(ArgumentError("work_size must be nonnegative"))
@@ -75,7 +98,11 @@ function _json_value(value)
     elseif value isa Integer
         return string(value)
     elseif value isa Real
-        return isfinite(value) ? @sprintf("%.17g", Float64(value)) : _json_value(string(value))
+        return if isfinite(value)
+            @sprintf("%.17g", Float64(value))
+        else
+            _json_value(string(value))
+        end
     elseif value isa AbstractVector
         return "[" * join((_json_value(item) for item in value), ", ") * "]"
     elseif value isa AbstractMatrix
@@ -144,7 +171,10 @@ function parse_cli(args)
     i = 1
     while i <= length(args)
         arg = args[i]
-        if arg == "--quick"
+        if arg == "--help" || arg == "-h"
+            println(usage())
+            exit(0)
+        elseif arg == "--quick"
             opts[:quick] = true
             i += 1
         elseif arg == "--output-dir"
@@ -186,6 +216,7 @@ function parse_cli(args)
     end
     opts[:nlive_effective] = opts[:quick] ? opts[:quick_nlive] : opts[:nlive]
     opts[:dlogz_effective] = opts[:quick] ? opts[:quick_dlogz] : opts[:dlogz]
+    opts[:proposal_scheduler] = Symbol(opts[:proposal_scheduler])
     return opts
 end
 
@@ -206,7 +237,7 @@ function run_julia_pe(opts)
         rng=MersenneTwister(Int(opts[:seed])),
         parallel=:threads,
         queue_size,
-        proposal_scheduler=String(opts[:proposal_scheduler]),
+        proposal_scheduler=opts[:proposal_scheduler],
         enlarge=1.1,
         bootstrap=0,
     )
@@ -249,8 +280,11 @@ function main(args=ARGS)
             :parallel_stats => parallel_stats_dict(fit.sampler.parallel_stats),
             :likelihood_cost => String(opts[:likelihood_cost]),
             :sleep_ms => Float64(opts[:sleep_ms]),
-            :work_size =>
-                isnothing(opts[:work_size]) ? _default_work_size(String(opts[:likelihood_cost])) : Int(opts[:work_size]),
+            :work_size => if isnothing(opts[:work_size])
+                _default_work_size(String(opts[:likelihood_cost]))
+            else
+                Int(opts[:work_size])
+            end,
             :quick => Bool(opts[:quick]),
             :nlive => Int(opts[:nlive_effective]),
             :dlogz => Float64(opts[:dlogz_effective]),

@@ -26,7 +26,7 @@ end
 
 @testset "Static sampler factories and live points" begin
     @test Dynesty._get_bound(:none, 2) isa UnitCube
-    @test Dynesty._get_bound("single", 2) isa Ellipsoid
+    @test_throws ArgumentError Dynesty._get_bound("single", 2)
     @test Dynesty._get_bound(:multi, 2) isa MultiEllipsoid
     @test Dynesty._get_bound(:balls, 2) isa RadFriends
     @test Dynesty._get_bound(:cubes, 2) isa SupFriends
@@ -167,7 +167,7 @@ end
     @test symbol_sampler.map_backend isa ThreadedMapBackend
     @test symbol_sampler.map_backend.queue_size == 2
 
-    string_sampler = NestedSampler(
+    @test_throws ArgumentError NestedSampler(
         static_loglike_gaussian,
         static_prior_identity,
         2;
@@ -178,8 +178,6 @@ end
         parallel="threaded",
         queue_size=2,
     )
-    @test string_sampler.map_backend isa ThreadedMapBackend
-    @test string_sampler.map_backend.queue_size == 2
 
     none_sampler = NestedSampler(
         static_loglike_gaussian,
@@ -226,7 +224,7 @@ end
     )
 end
 
-@testset "Static sampler pool usage policy" begin
+@testset "Static sampler parallel policy" begin
     initial_backend = StaticCountingMapBackend(2)
     sampler = NestedSampler(
         static_loglike_gaussian,
@@ -237,14 +235,16 @@ end
         sample=:unif,
         rng=MersenneTwister(57),
         map_backend=initial_backend,
-        pool_usage=PoolUsage(initial=false),
+        parallel_policy=ParallelPolicy(initialization=false),
     )
-    @test sampler.pool_usage.initial == false
+    @test sampler.parallel_policy.initialization == false
     @test initial_backend.calls == 0
     run_nested!(sampler; maxiter=3, dlogz=nothing, add_live=false)
     @test sampler.proposal_tasks_submitted > 0
-    @test sampler.parallel_stats.proposal_tasks_submitted == sampler.proposal_tasks_submitted
-    @test sampler.parallel_stats.proposal_batches_submitted == sampler.proposal_batches_submitted
+    @test sampler.parallel_stats.proposal_tasks_submitted ==
+        sampler.proposal_tasks_submitted
+    @test sampler.parallel_stats.proposal_batches_submitted ==
+        sampler.proposal_batches_submitted
 
     proposal_backend = StaticCountingMapBackend(3)
     no_proposal_sampler = NestedSampler(
@@ -256,11 +256,11 @@ end
         sample=:unif,
         rng=MersenneTwister(58),
         map_backend=proposal_backend,
-        use_pool=Dict("propose_point" => false),
+        parallel_policy=ParallelPolicy(proposals=false),
     )
     @test proposal_backend.calls == 1
     run_nested!(no_proposal_sampler; maxiter=4, dlogz=nothing, add_live=false)
-    @test no_proposal_sampler.pool_usage.proposals == false
+    @test no_proposal_sampler.parallel_policy.proposals == false
     @test no_proposal_sampler.proposal_tasks_submitted == 0
     @test proposal_backend.calls == 1
 
@@ -272,7 +272,6 @@ end
         bound=:none,
         sample=:unif,
         rng=MersenneTwister(59),
-        pool_usage=PoolUsage(),
         use_pool=Dict(:proposals => true),
     )
 end
@@ -412,12 +411,14 @@ end
         path = joinpath(dir, "threaded_sampler.jls")
         checkpoint!(sampler, path)
         restored = restore_sampler(
-            path; loglikelihood=static_loglike_gaussian, prior_transform=static_prior_identity
+            path;
+            loglikelihood=static_loglike_gaussian,
+            prior_transform=static_prior_identity,
         )
         @test restored isa NestedSampler
         @test restored.map_backend isa ThreadedMapBackend
         @test restored.map_backend.queue_size == 2
-        @test restored.pool_usage == sampler.pool_usage
+        @test restored.parallel_policy == sampler.parallel_policy
         @test restored.parallel_stats.proposal_tasks_submitted ==
             sampler.parallel_stats.proposal_tasks_submitted
         @test restored.proposal_tasks_submitted == sampler.proposal_tasks_submitted
@@ -617,7 +618,7 @@ end
     @test all(isfinite, results(sampler).logz)
 end
 
-@testset "Static sampler bound bootstrap pool usage" begin
+@testset "Static sampler bound bootstrap parallel policy" begin
     optout_backend = StaticCountingMapBackend(2)
     optout = NestedSampler(
         static_loglike_gaussian,
@@ -631,7 +632,7 @@ end
         bootstrap=3,
         rng=MersenneTwister(37),
         map_backend=optout_backend,
-        pool_usage=PoolUsage(initial=false, proposals=false, bounds=false),
+        parallel_policy=ParallelPolicy(initialization=false, proposals=false, bounds=false),
     )
     run_nested!(optout; maxiter=5, dlogz=nothing, add_live=false)
     @test optout.nbound >= 1
@@ -652,7 +653,7 @@ end
         bootstrap=3,
         rng=MersenneTwister(37),
         map_backend=optin_backend,
-        pool_usage=PoolUsage(initial=false, proposals=false, bounds=true),
+        parallel_policy=ParallelPolicy(initialization=false, proposals=false, bounds=true),
     )
     run_nested!(optin; maxiter=5, dlogz=nothing, add_live=false)
     @test optin.nbound >= 1
@@ -675,7 +676,9 @@ end
             rng=MersenneTwister(seed),
             parallel=:threads,
             queue_size=2,
-            pool_usage=PoolUsage(initial=false, proposals=false, bounds=true),
+            parallel_policy=ParallelPolicy(
+                initialization=false, proposals=false, bounds=true
+            ),
         )
         run_nested!(sampler; maxiter=5, dlogz=nothing, add_live=false)
         res = results(sampler)

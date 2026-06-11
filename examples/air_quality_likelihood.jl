@@ -111,12 +111,14 @@ function _make_dataset(; seed::Int=20240611, nsensors::Int=56, nhours::Int=48)
     diurnal = Vector{Float64}(undef, nhours)
     @inbounds for t in 1:nhours
         hour = t - 1
-        wind_dir[t] = 0.72 + 0.58 * sin(2 * pi * hour / 24.0 + 0.35) +
-                      0.12 * sin(2 * pi * hour / 8.0)
-        wind_speed[t] = 2.5 + 0.65 * cos(2 * pi * hour / 24.0 - 0.4) +
-                        0.25 * sin(2 * pi * hour / 12.0)
-        diurnal[t] = 0.82 + 0.23 * sin(2 * pi * (hour - 7.0) / 24.0)^2 +
-                     0.11 * cos(2 * pi * hour / 48.0)
+        wind_dir[t] =
+            0.72 + 0.58 * sin(2 * pi * hour / 24.0 + 0.35) + 0.12 * sin(2 * pi * hour / 8.0)
+        wind_speed[t] =
+            2.5 + 0.65 * cos(2 * pi * hour / 24.0 - 0.4) + 0.25 * sin(2 * pi * hour / 12.0)
+        diurnal[t] =
+            0.82 +
+            0.23 * sin(2 * pi * (hour - 7.0) / 24.0)^2 +
+            0.11 * cos(2 * pi * hour / 48.0)
     end
 
     sigma = exp(TRUE_THETA[6])
@@ -124,12 +126,7 @@ function _make_dataset(; seed::Int=20240611, nsensors::Int=56, nhours::Int=48)
     @inbounds for t in 1:nhours
         for i in 1:nsensors
             mu = _plume_prediction(
-                TRUE_THETA,
-                distance[i],
-                bearing[i],
-                wind_dir[t],
-                wind_speed[t],
-                diurnal[t],
+                TRUE_THETA, distance[i], bearing[i], wind_dir[t], wind_speed[t], diurnal[t]
             )
             observed[i, t] = mu + sigma * randn(rng)
         end
@@ -162,11 +159,12 @@ function reset_air_quality_call_count!()
     return nothing
 end
 
-function air_quality_dataset_metadata(; work_repeats::Integer=DEFAULT_WORK_REPEATS, sleep_ms::Real=0.0)
+function air_quality_dataset_metadata(;
+    work_repeats::Integer=DEFAULT_WORK_REPEATS, sleep_ms::Real=0.0
+)
     obs = DATASET.observed
     return Dict{String, Any}(
-        "description" =>
-            "Synthetic PM2.5 sensor calibration/source-strength inverse problem; not for environmental regulatory decisions.",
+        "description" => "Synthetic PM2.5 sensor calibration/source-strength inverse problem; not for environmental regulatory decisions.",
         "seed" => DATASET.seed,
         "sensor_count" => size(obs, 1),
         "hour_count" => size(obs, 2),
@@ -184,8 +182,11 @@ end
 
 function air_quality_prior_transform(u)
     uv = collect(Float64, u)
-    length(uv) == AIR_QUALITY_NDIM ||
-        throw(DimensionMismatch("expected $AIR_QUALITY_NDIM unit-cube parameters, got $(length(uv))"))
+    length(uv) == AIR_QUALITY_NDIM || throw(
+        DimensionMismatch(
+            "expected $AIR_QUALITY_NDIM unit-cube parameters, got $(length(uv))"
+        ),
+    )
     return PRIOR_LOW .+ (PRIOR_HIGH .- PRIOR_LOW) .* uv
 end
 
@@ -204,7 +205,9 @@ function _work_stabilizer(theta::AbstractVector{<:Real}, work_repeats::Int)
             diurnal = data.diurnal[t]
             for i in eachindex(data.distance)
                 d = data.distance[i]
-                alignment = exp(-wind_decay * (1.0 - cos(_angle_delta(data.bearing[i], wd))))
+                alignment = exp(
+                    -wind_decay * (1.0 - cos(_angle_delta(data.bearing[i], wd)))
+                )
                 decay = exp(-d / (diffusion_length * scale)) / (1.0 + 0.035 * d^2)
                 plume = strength * diurnal * decay * alignment / sqrt(ws)
                 acc += sqrt(abs(plume) + 1.0e-9) + sin(0.003 * plume + 0.01 * rep)^2
@@ -215,9 +218,7 @@ function _work_stabilizer(theta::AbstractVector{<:Real}, work_repeats::Int)
 end
 
 function air_quality_loglikelihood(
-    theta,
-    work_repeats::Integer=DEFAULT_WORK_REPEATS,
-    sleep_ms::Real=0.0,
+    theta, work_repeats::Integer=DEFAULT_WORK_REPEATS, sleep_ms::Real=0.0
 )
     Threads.atomic_add!(AIR_QUALITY_CALL_COUNT, 1)
     tv = collect(Float64, theta)
@@ -302,10 +303,7 @@ function auto_calibrate_air_quality_likelihood(;
     repeats = 1
     history = Vector{Dict{String, Any}}()
     selected = calibrate_air_quality_likelihood(;
-        work_repeats=repeats,
-        ntrial,
-        seed,
-        sleep_ms,
+        work_repeats=repeats, ntrial, seed, sleep_ms
     )
     push!(history, copy(selected))
     while Float64(selected["median_seconds"]) < 0.005 && repeats < max_work_repeats
@@ -313,10 +311,7 @@ function auto_calibrate_air_quality_likelihood(;
         factor = clamp(ceil(Int, ratio), 2, 8)
         repeats = min(Int(max_work_repeats), repeats * factor)
         selected = calibrate_air_quality_likelihood(;
-            work_repeats=repeats,
-            ntrial,
-            seed,
-            sleep_ms,
+            work_repeats=repeats, ntrial, seed, sleep_ms
         )
         push!(history, copy(selected))
     end
@@ -326,17 +321,13 @@ function auto_calibrate_air_quality_likelihood(;
         new_repeats == repeats && (new_repeats = max(1, repeats - 1))
         repeats = new_repeats
         selected = calibrate_air_quality_likelihood(;
-            work_repeats=repeats,
-            ntrial,
-            seed,
-            sleep_ms,
+            work_repeats=repeats, ntrial, seed, sleep_ms
         )
         push!(history, copy(selected))
     end
     selected["target_seconds"] = target
     selected["history"] = history
-    selected["selection_note"] =
-        "Auto-selected deterministic repeated plume work to target a 0.005--0.02 second median direct Julia likelihood."
+    selected["selection_note"] = "Auto-selected deterministic repeated plume work to target a 0.005--0.02 second median direct Julia likelihood."
     return selected
 end
 
