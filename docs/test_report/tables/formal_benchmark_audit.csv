@@ -1,0 +1,8 @@
+check,expected,observed,status
+mode,formal,formal,ok
+runs,18 ok,18/18 ok,ok
+plots,9 ok,9/9 ok,ok
+plot method,corner_overlay,corner_overlay,ok
+/usr/bin/time -v,true,true,ok
+RSS/PSS fields,present,true,ok
+overlay PNG,9 files,9 files,ok

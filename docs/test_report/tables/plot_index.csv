@@ -1,0 +1,10 @@
+cost,repeat,filename,method,status,julia_nsamples,python_nsamples,julia_logz,python_logz,julia_logzerr,python_logzerr
+cheap,1,corner_cheap_repeat1_julia_vs_python.png,corner_overlay,ok,"17,412","17,404",-6.68684,-6.68693,0.06032,0.06067
+cheap,2,corner_cheap_repeat2_julia_vs_python.png,corner_overlay,ok,"17,365","17,566",-6.66373,-6.79324,0.06024,0.06101
+cheap,3,corner_cheap_repeat3_julia_vs_python.png,corner_overlay,ok,"17,392","17,467",-6.67551,-6.72226,0.06041,0.06086
+medium,1,corner_medium_repeat1_julia_vs_python.png,corner_overlay,ok,"17,389","17,544",-6.67271,-6.77774,0.06048,0.06097
+medium,2,corner_medium_repeat2_julia_vs_python.png,corner_overlay,ok,"17,526","17,404",-6.76417,-6.68747,0.06087,0.06063
+medium,3,corner_medium_repeat3_julia_vs_python.png,corner_overlay,ok,"17,471","17,527",-6.73004,-6.76280,0.06076,0.06078
+heavy,1,corner_heavy_repeat1_julia_vs_python.png,corner_overlay,ok,"17,502","17,425",-6.74917,-6.69573,0.06088,0.06045
+heavy,2,corner_heavy_repeat2_julia_vs_python.png,corner_overlay,ok,"17,444","17,391",-6.71222,-6.67325,0.06067,0.06032
+heavy,3,corner_heavy_repeat3_julia_vs_python.png,corner_overlay,ok,"17,416","17,291",-6.69062,-6.60632,0.06064,0.06007

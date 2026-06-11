@@ -1,0 +1,42 @@
+{
+  "summary_json": "examples/output/parallel_cost_compare/summary.json",
+  "summary_csv": "examples/output/parallel_cost_compare/summary.csv",
+  "plot_index": "examples/output/parallel_cost_compare/plot_index.csv",
+  "created_at": "2026-06-11T11:14:00.588",
+  "mode": "formal",
+  "configuration": {
+    "nlive": 1500,
+    "nproc": 31,
+    "time_command": "/usr/bin/time",
+    "used_usr_bin_time": true,
+    "threads": 31,
+    "cost_work_sizes": {
+      "medium": 2000,
+      "heavy": 10000,
+      "cheap": 0
+    },
+    "time_command_available": true,
+    "dlogz": 0.02,
+    "queue_size": 31,
+    "sleep_ms": 0,
+    "julia_proposal_scheduler": "auto",
+    "python_pool": "multiprocessing.Pool"
+  },
+  "environment": {
+    "OPENBLAS_NUM_THREADS": "1",
+    "OMP_NUM_THREADS": "1",
+    "MKL_NUM_THREADS": "1"
+  },
+  "python_dynesty_path": "/home/czc/projects/working/dynesty/py",
+  "audit": {
+    "mode": "formal",
+    "runs": 18,
+    "run_ok": 18,
+    "plots": 9,
+    "plot_ok": 9,
+    "plot_method": "corner_overlay",
+    "used_usr_bin_time": true,
+    "memory_fields": true,
+    "overlay_files": 9
+  }
+}
