@@ -1,0 +1,223 @@
+{
+  "summary_json": "examples/output/air_quality_pe_compare/summary.json",
+  "plot_index": "examples/output/air_quality_pe_compare/plot_index.csv",
+  "created_at": "2026-06-11T13:28:11.791",
+  "mode": "smoke",
+  "comparison_label": "Julia 31 threads direct Julia likelihood vs Python dynesty 4 worker processes through Julia bridge",
+  "configuration": {
+    "nlive": 60,
+    "nproc": 4,
+    "time_command": "/usr/bin/time",
+    "used_usr_bin_time": false,
+    "threads": 31,
+    "smoke_request": {
+      "nlive": 60,
+      "dlogz": 0.8,
+      "nproc": 4,
+      "queue_size": 4
+    },
+    "formal_request": {
+      "repeats": 2,
+      "nlive": 500,
+      "threads": 31,
+      "dlogz": 0.08,
+      "nproc": 31,
+      "queue_size": 31
+    },
+    "time_command_available": false,
+    "dlogz": 0.8,
+    "queue_size": 4,
+    "sleep_ms": 0,
+    "repeats": 1,
+    "python_start_method": "spawn",
+    "work_repeats": 64,
+    "memory_sample_interval_seconds": 0.2
+  },
+  "environment": {
+    "OPENBLAS_NUM_THREADS": "1",
+    "OMP_NUM_THREADS": "1",
+    "MKL_NUM_THREADS": "1"
+  },
+  "likelihood_model": {
+    "truth_vector": [
+      74,
+      12.5,
+      2.1,
+      3.2,
+      1.1,
+      1.1631508098056809
+    ],
+    "prior_bounds": {
+      "high": [
+        130,
+        35,
+        4.5,
+        7,
+        8,
+        2.302585092994046
+      ],
+      "low": [
+        25,
+        4,
+        0.1,
+        0.8,
+        -8,
+        0.4054651081081644
+      ]
+    },
+    "sleep_ms": 0,
+    "sensor_count": 56,
+    "truth": {
+      "log_noise_scale": 1.1631508098056809,
+      "wind_decay": 2.1,
+      "source_strength": 74,
+      "background_pm25": 12.5,
+      "diffusion_length": 3.2,
+      "global_bias": 1.1
+    },
+    "dataset_shape": [
+      56,
+      48
+    ],
+    "work_repeats": 64,
+    "seed": 20240611,
+    "hour_count": 48,
+    "parameter_names": [
+      "source_strength",
+      "background_pm25",
+      "wind_decay",
+      "diffusion_length",
+      "global_bias",
+      "log_noise_scale"
+    ],
+    "description": "Synthetic PM2.5 sensor calibration/source-strength inverse problem; not for environmental regulatory decisions.",
+    "observation_count": 2688,
+    "source_location_km": {
+      "x": 1.7,
+      "y": -1.4
+    }
+  },
+  "bridge": {
+    "observed_statuses": [
+      "not_applicable",
+      "ok"
+    ],
+    "fallback": "PyJulia",
+    "observed_kinds": [
+      "pyjulia"
+    ],
+    "preferred": "juliacall"
+  },
+  "calibration": {
+    "max_seconds": 0.009080257,
+    "status": "ok",
+    "min_seconds": 0.009031205,
+    "median_seconds": 0.009075608,
+    "target_note": "Median measures Julia direct likelihood calls after warm-up.",
+    "sleep_ms": 0,
+    "dataset": {
+      "truth_vector": [
+        74,
+        12.5,
+        2.1,
+        3.2,
+        1.1,
+        1.1631508098056809
+      ],
+      "prior_bounds": {
+        "high": [
+          130,
+          35,
+          4.5,
+          7,
+          8,
+          2.302585092994046
+        ],
+        "low": [
+          25,
+          4,
+          0.1,
+          0.8,
+          -8,
+          0.4054651081081644
+        ]
+      },
+      "sleep_ms": 0,
+      "sensor_count": 56,
+      "truth": {
+        "log_noise_scale": 1.1631508098056809,
+        "wind_decay": 2.1,
+        "source_strength": 74,
+        "background_pm25": 12.5,
+        "diffusion_length": 3.2,
+        "global_bias": 1.1
+      },
+      "dataset_shape": [
+        56,
+        48
+      ],
+      "work_repeats": 64,
+      "seed": 20240611,
+      "hour_count": 48,
+      "parameter_names": [
+        "source_strength",
+        "background_pm25",
+        "wind_decay",
+        "diffusion_length",
+        "global_bias",
+        "log_noise_scale"
+      ],
+      "description": "Synthetic PM2.5 sensor calibration/source-strength inverse problem; not for environmental regulatory decisions.",
+      "observation_count": 2688,
+      "source_location_km": {
+        "x": 1.7,
+        "y": -1.4
+      }
+    },
+    "kind": "julia_direct",
+    "work_repeats": 64,
+    "ntrial": 5,
+    "seed": 20240612
+  },
+  "aggregates": [
+    {
+      "median_direct_julia_likelihood_seconds": 0.008982445,
+      "median_python_bridge_likelihood_seconds": null,
+      "successful_runs": 1,
+      "median_process_tree_peak_rss_kb": 869800,
+      "implementation": "julia",
+      "median_logz": -6949.910130278859,
+      "median_logzerr": 0.583444744390277,
+      "median_process_tree_peak_pss_kb": 758360,
+      "median_cpu_utilization": null,
+      "median_nsamples": 2438,
+      "median_wall_time_seconds": 62.58798408508301
+    },
+    {
+      "median_direct_julia_likelihood_seconds": null,
+      "median_python_bridge_likelihood_seconds": 0.00907063,
+      "successful_runs": 1,
+      "median_process_tree_peak_rss_kb": 3373948,
+      "implementation": "python",
+      "median_logz": -6950.533679483877,
+      "median_logzerr": 0.6030693894816724,
+      "median_process_tree_peak_pss_kb": 2455557,
+      "median_cpu_utilization": null,
+      "median_nsamples": 2499,
+      "median_wall_time_seconds": 126.14863300323486
+    }
+  ],
+  "audit": {
+    "mode": "smoke",
+    "runs": 2,
+    "run_ok": 2,
+    "plots": 1,
+    "plot_ok": 1,
+    "plot_files_present": 1,
+    "used_usr_bin_time": false,
+    "time_command_available": false,
+    "work_repeats": 64,
+    "direct_median_seconds": 0.009075608,
+    "comparison_label": "Julia 31 threads direct Julia likelihood vs Python dynesty 4 worker processes through Julia bridge"
+  }
+}

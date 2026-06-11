@@ -24,6 +24,9 @@ BENCH_DIR = ROOT / "examples" / "output" / "parallel_cost_compare"
 SUMMARY_JSON = BENCH_DIR / "summary.json"
 SUMMARY_CSV = BENCH_DIR / "summary.csv"
 PLOT_INDEX = BENCH_DIR / "plot_index.csv"
+AIR_BENCH_DIR = ROOT / "examples" / "output" / "air_quality_pe_compare"
+AIR_SUMMARY_JSON = AIR_BENCH_DIR / "summary.json"
+AIR_PLOT_INDEX = AIR_BENCH_DIR / "plot_index.csv"
 FIGURES_DIR = REPORT_DIR / "figures"
 TABLES_DIR = REPORT_DIR / "tables"
 
@@ -71,6 +74,12 @@ def load_summary() -> dict:
     if not SUMMARY_JSON.exists():
         raise FileNotFoundError(f"Missing benchmark summary: {SUMMARY_JSON}")
     return json.loads(SUMMARY_JSON.read_text(encoding="utf-8"))
+
+
+def load_air_quality_summary() -> dict:
+    if not AIR_SUMMARY_JSON.exists():
+        raise FileNotFoundError(f"Missing air-quality benchmark summary: {AIR_SUMMARY_JSON}")
+    return json.loads(AIR_SUMMARY_JSON.read_text(encoding="utf-8"))
 
 
 def audit_summary(data: dict) -> dict:
@@ -333,6 +342,178 @@ def write_summary_metadata(data: dict, audit: dict) -> None:
     )
 
 
+def audit_air_quality_summary(data: dict) -> dict:
+    runs = data.get("runs", [])
+    plots = data.get("plots", [])
+    run_ok = sum(run.get("status") == "ok" for run in runs)
+    plot_ok = sum(plot.get("status") == "ok" for plot in plots)
+    missing_plots = [
+        plot.get("plot_file", "")
+        for plot in plots
+        if plot.get("status") == "ok" and not Path(plot.get("plot_file", "")).exists()
+    ]
+    configuration = data.get("configuration", {})
+    calibration = data.get("calibration", {})
+    return {
+        "mode": data.get("mode"),
+        "runs": len(runs),
+        "run_ok": run_ok,
+        "plots": len(plots),
+        "plot_ok": plot_ok,
+        "plot_files_present": plot_ok - len(missing_plots),
+        "used_usr_bin_time": configuration.get("used_usr_bin_time"),
+        "time_command_available": configuration.get("time_command_available"),
+        "work_repeats": calibration.get("work_repeats"),
+        "direct_median_seconds": calibration.get("median_seconds"),
+        "comparison_label": data.get("comparison_label"),
+    }
+
+
+def write_air_quality_audit_table(audit: dict) -> None:
+    rows = [
+        {"check": "mode", "expected": "formal for final gate", "observed": audit["mode"], "status": "degraded"},
+        {"check": "runs", "expected": "Julia/Python ok", "observed": f"{audit['run_ok']}/{audit['runs']} ok", "status": "ok"},
+        {"check": "plots", "expected": "overlay ok", "observed": f"{audit['plot_ok']}/{audit['plots']} ok", "status": "ok"},
+        {"check": "overlay PNG", "expected": "present", "observed": f"{audit['plot_files_present']} files", "status": "ok"},
+        {"check": "/usr/bin/time -v", "expected": "available and used", "observed": f"available={audit['time_command_available']}, used={audit['used_usr_bin_time']}", "status": "blocked"},
+        {"check": "direct likelihood median", "expected": "0.005--0.02 s", "observed": fmt_float(audit["direct_median_seconds"], 5), "status": "ok"},
+        {"check": "work repeats", "expected": "recorded", "observed": audit["work_repeats"], "status": "ok"},
+    ]
+    write_csv(TABLES_DIR / "air_quality_audit.csv", rows, ["check", "expected", "observed", "status"])
+    write_latex_table(
+        TABLES_DIR / "air_quality_audit.tex",
+        [("check", "check"), ("expected", "expected"), ("observed", "observed"), ("status", "status")],
+        rows,
+    )
+
+
+def write_air_quality_run_table(data: dict) -> None:
+    rows: list[dict] = []
+    for run in sorted(data.get("runs", []), key=lambda item: (IMPL_ORDER.get(item.get("implementation"), 9), item.get("repeat", 0))):
+        rows.append(
+            {
+                "implementation": run.get("implementation"),
+                "repeat": run.get("repeat"),
+                "status": run.get("status"),
+                "wall_s": fmt_float(run.get("wall_time_seconds"), 2),
+                "cpu_utilization": fmt_float(run.get("cpu_utilization"), 2),
+                "rss_kb": fmt_int(run.get("process_tree_peak_rss_kb")),
+                "pss_kb": fmt_int(run.get("process_tree_peak_pss_kb")),
+                "nlive": fmt_int(run.get("nlive")),
+                "queue_size": fmt_int(run.get("queue_size")),
+                "workers": fmt_int(run.get("threads") if run.get("implementation") == "julia" else run.get("nproc")),
+                "bridge": run.get("bridge_kind") or "--",
+                "direct_like_s": fmt_float(run.get("direct_julia_likelihood_median_seconds"), 5),
+                "bridge_like_s": fmt_float(run.get("python_bridge_likelihood_median_seconds"), 5),
+                "nsamples": fmt_int(run.get("nsamples")),
+                "logz": fmt_float(run.get("logz"), 4),
+                "logzerr": fmt_float(run.get("logzerr"), 4),
+            }
+        )
+    fields = [
+        "implementation",
+        "repeat",
+        "status",
+        "wall_s",
+        "cpu_utilization",
+        "rss_kb",
+        "pss_kb",
+        "nlive",
+        "queue_size",
+        "workers",
+        "bridge",
+        "direct_like_s",
+        "bridge_like_s",
+        "nsamples",
+        "logz",
+        "logzerr",
+    ]
+    write_csv(TABLES_DIR / "air_quality_runs.csv", rows, fields)
+    write_latex_table(
+        TABLES_DIR / "air_quality_runs.tex",
+        [
+            ("implementation", "impl"),
+            ("status", "status"),
+            ("wall_s", "wall s"),
+            ("rss_kb", "RSS KB"),
+            ("pss_kb", "PSS KB"),
+            ("workers", "workers"),
+            ("bridge", "bridge"),
+            ("direct_like_s", "Julia like s"),
+            ("bridge_like_s", "bridge like s"),
+            ("nsamples", "nsamples"),
+            ("logz", "logz"),
+            ("logzerr", "logzerr"),
+        ],
+        rows,
+    )
+
+
+def copy_air_quality_plots(data: dict) -> list[dict]:
+    FIGURES_DIR.mkdir(parents=True, exist_ok=True)
+    rows: list[dict] = []
+    for plot in sorted(data.get("plots", []), key=lambda item: item.get("repeat", 0)):
+        src = Path(plot["plot_file"]) if plot.get("plot_file") else None
+        filename = ""
+        if src is not None and src.exists():
+            dst = FIGURES_DIR / src.name
+            shutil.copy2(src, dst)
+            filename = dst.name
+        rows.append(
+            {
+                "repeat": plot.get("repeat"),
+                "filename": filename,
+                "method": plot.get("method"),
+                "status": plot.get("status"),
+                "julia_nsamples": fmt_int(plot.get("julia_nsamples")),
+                "python_nsamples": fmt_int(plot.get("python_nsamples")),
+                "julia_logz": fmt_float(plot.get("julia_logz"), 5),
+                "python_logz": fmt_float(plot.get("python_logz"), 5),
+            }
+        )
+    write_csv(
+        TABLES_DIR / "air_quality_plot_index.csv",
+        rows,
+        ["repeat", "filename", "method", "status", "julia_nsamples", "python_nsamples", "julia_logz", "python_logz"],
+    )
+    write_latex_table(
+        TABLES_DIR / "air_quality_plot_index.tex",
+        [
+            ("repeat", "rep"),
+            ("filename", "file"),
+            ("method", "method"),
+            ("status", "status"),
+            ("julia_nsamples", "Julia n"),
+            ("python_nsamples", "Python n"),
+            ("julia_logz", "Julia logz"),
+            ("python_logz", "Python logz"),
+        ],
+        rows,
+    )
+    return rows
+
+
+def write_air_quality_metadata(data: dict, audit: dict) -> None:
+    metadata = {
+        "summary_json": str(AIR_SUMMARY_JSON.relative_to(ROOT)),
+        "plot_index": str(AIR_PLOT_INDEX.relative_to(ROOT)),
+        "created_at": data.get("created_at"),
+        "mode": data.get("mode"),
+        "comparison_label": data.get("comparison_label"),
+        "configuration": data.get("configuration"),
+        "environment": data.get("environment"),
+        "likelihood_model": data.get("likelihood_model"),
+        "bridge": data.get("bridge"),
+        "calibration": data.get("calibration"),
+        "aggregates": data.get("aggregates"),
+        "audit": audit,
+    }
+    (TABLES_DIR / "air_quality_metadata.json").write_text(
+        json.dumps(metadata, indent=2, ensure_ascii=False) + "\n",
+        encoding="utf-8",
+    )
+
+
 def main() -> None:
     TABLES_DIR.mkdir(parents=True, exist_ok=True)
     FIGURES_DIR.mkdir(parents=True, exist_ok=True)
@@ -377,9 +558,19 @@ def main() -> None:
     write_audit_table(audit)
     plot_rows = copy_plots(data)
     write_summary_metadata(data, audit)
+
+    air_data = load_air_quality_summary()
+    air_audit = audit_air_quality_summary(air_data)
+    write_air_quality_audit_table(air_audit)
+    write_air_quality_run_table(air_data)
+    air_plot_rows = copy_air_quality_plots(air_data)
+    write_air_quality_metadata(air_data, air_audit)
+
     print(f"Wrote {len(benchmark_rows)} benchmark summary rows")
     print(f"Copied {len(plot_rows)} posterior overlay PNGs to {FIGURES_DIR.relative_to(ROOT)}")
     print(f"Formal benchmark audit: {audit}")
+    print(f"Air-quality PE audit: {air_audit}")
+    print(f"Copied {len(air_plot_rows)} air-quality posterior overlay PNGs to {FIGURES_DIR.relative_to(ROOT)}")
 
 
 if __name__ == "__main__":

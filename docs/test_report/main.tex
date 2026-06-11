@@ -37,7 +37,7 @@
 \maketitle
 
 \begin{abstract}
-本报告汇总了当前 \code{Dynesty.jl} 工作树在 Julia 默认测试套件、示例脚本、parallel map backend、Python fixture 兼容性、benchmark runner、Python 脚本语法检查、formal parallel cost benchmark 审计，以及 LaTeX 编译链路上的验证结果。常规 Julia 测试通过 \code{julia --project=. -e 'using Pkg; Pkg.test()'} 全量执行并通过；formal benchmark 复用已经完成的 \code{examples/output/parallel_cost_compare} 输出，审计确认其为 \code{mode == "formal"}、18 个 run 全部 \code{ok}、9 个 \code{corner_overlay} posterior overlay plot 全部 \code{ok}，且所有 run 均使用 \code{/usr/bin/time -v} 并记录 process-tree RSS/PSS 内存字段。性能结果显示，在 cheap likelihood 下 Python multiprocessing wall time 中位数较低；在 medium/heavy likelihood 下 Julia 31 threads wall time 中位数明显低于 Python 31 worker processes。后验叠加图在 cheap、medium、heavy 三种 cost 与 3 个 repeat 上均生成成功，视觉上用于检查 Julia threaded 与 Python dynesty pool 的 posterior samples 是否一致到当前 benchmark 所需层面。
+本报告汇总了当前 \code{Dynesty.jl} 工作树在 Julia 默认测试套件、示例脚本、parallel map backend、Python fixture 兼容性、benchmark runner、Python 脚本语法检查、formal parallel cost benchmark 审计、真实空气质量 PE smoke benchmark，以及 LaTeX 编译链路上的验证结果。常规 Julia 测试通过 \code{julia --project=. -e 'using Pkg; Pkg.test()'} 全量执行并通过；formal parallel cost benchmark 复用已经完成的 \code{examples/output/parallel_cost_compare} 输出，审计确认其为 \code{mode == "formal"}、18 个 run 全部 \code{ok}、9 个 \code{corner_overlay} posterior overlay plot 全部 \code{ok}，且所有 run 均使用 \code{/usr/bin/time -v} 并记录 process-tree RSS/PSS 内存字段。新增空气质量 benchmark 使用 synthetic PM2.5 sensor calibration/source-strength inverse problem，likelihood 仅在 Julia 中实现，Julia runner 直接调用该 likelihood，Python dynesty 通过 PyJulia bridge 调用同一个 Julia likelihood；当前环境缺失 \code{/usr/bin/time}，因此空气质量 formal benchmark gate 未满足，但 0.01s 量级 likelihood smoke 已完成并生成 posterior overlay 图。
 \end{abstract}
 
 \tableofcontents
@@ -63,6 +63,8 @@ Python & \code{3.9.18}; executable: \pathcode{/home/czc/opt/miniconda3/bin/pytho
 \code{MKL_NUM_THREADS} & formal benchmark summary 记录为 \code{1}; 当前 shell 探针为 \code{1}。 \\
 Python dynesty source path & \pathcode{../dynesty/py}; 解析到 \pathcode{/home/czc/projects/working/dynesty/py}; 只读引用。 \\
 正式 parallel benchmark & Julia 31 threads vs Python 31 multiprocessing worker processes; \code{queue_size=31}, \code{nlive=1500}, \code{dlogz=0.02}。 \\
+空气质量 PE smoke & Julia 31 threads direct Julia likelihood vs Python dynesty 4 worker processes through PyJulia bridge; \code{queue_size=4}, \code{nlive=60}, \code{dlogz=0.8}; direct Julia likelihood median 约 \code{0.0091s}。 \\
+当前 \code{/usr/bin/time} & 当前主机 \code{/usr/bin/time} 与 \code{/bin/time} 均不存在；\code{extra/time 1.10-1} 未安装，\code{sudo} 需要密码，空气质量 formal gate 因此 blocked。 \\
 \bottomrule
 \end{tabularx}
 \caption{测试与 benchmark 环境摘要。}
@@ -92,15 +94,40 @@ Benchmark runner include &
 \cmd{println("runner ok")'}
 \end{tabular}
 & \statusok & 未单独计时 & 输出 \code{runner ok}。 \\
+Air-quality likelihood include &
+\begin{tabular}[t]{@{}l@{}}
+\cmd{julia --project=. -e}\\
+\cmd{'include("examples/air_quality_likelihood.jl");}\\
+\cmd{println("air quality likelihood ok")'}
+\end{tabular}
+& \statusok & 未单独计时 & 输出 \code{air quality likelihood ok}; calibration helper 可运行。 \\
+Air-quality runner include &
+\begin{tabular}[t]{@{}l@{}}
+\cmd{julia --project=. -e}\\
+\cmd{'include("benchmark/air_quality_pe_compare.jl");}\\
+\cmd{println("air quality runner ok")'}
+\end{tabular}
+& \statusok & 未单独计时 & 输出 \code{air quality runner ok}。 \\
 Python py\_compile &
 \begin{tabular}[t]{@{}l@{}}
 \cmd{python3 -m py_compile}\\
 \cmd{benchmark/parallel_cost_corner.py}\\
 \cmd{examples/pe_parallel_python.py}\\
+\cmd{examples/air_quality_pe_python.py}\\
+\cmd{benchmark/air_quality_corner_overlay.py}\\
 \cmd{test/reference/python/generate_reference.py}
 \end{tabular}
 & \statusok & 未单独计时 & 无输出，exit code 0；未保留 \code{__pycache__}。 \\
 Formal benchmark audit & 读取并审计 \pathcode{examples/output/parallel_cost_compare/summary.json} & \statusok & 未单独计时 & \code{mode=formal}; 18/18 run ok; 9/9 plot ok; \code{corner_overlay}; 全部使用 \code{/usr/bin/time -v}; RSS/PSS 字段存在。 \\
+Air-quality PE smoke &
+\begin{tabular}[t]{@{}l@{}}
+\cmd{julia --project=. benchmark/air_quality_pe_compare.jl}\\
+\cmd{--mode smoke --allow-missing-usr-time}\\
+\cmd{--smoke-nproc 4 --smoke-queue-size 4}\\
+\cmd{--smoke-nlive 60 --smoke-dlogz 0.8}\\
+\cmd{--work-repeats 64 --calibration-trials 5}
+\end{tabular}
+& \statusok & Julia 62.59s; Python 126.15s & Python dynesty 通过 PyJulia bridge 调用同一个 Julia likelihood；posterior overlay 生成成功；\code{/usr/bin/time -v} 因工具缺失未使用。 \\
 LaTeX compile check &
 \begin{tabular}[t]{@{}l@{}}
 \cmd{latexmk -xelatex}\\
@@ -198,13 +225,48 @@ RSS 与 PSS 的口径不同。RSS（Resident Set Size）按进程统计驻留物
 
 全部 9 张 overlay 图见附录表 \ref{tab:plot-index}；其文件均已复制到报告目录并纳入提交范围。
 
+\section{真实空气质量 PE Benchmark}
+
+新增 benchmark 位于 \pathcode{examples/air_quality_likelihood.jl}、\pathcode{examples/air_quality_pe_julia.jl}、\pathcode{examples/air_quality_pe_python.py}、\pathcode{benchmark/air_quality_pe_compare.jl} 和 \pathcode{benchmark/air_quality_corner_overlay.py}。模型是 deterministic synthetic air-quality inverse problem：56 个 PM2.5 sensors、48 个 hourly time slices、固定 synthetic source location，反演 \code{source_strength}、\code{background_pm25}、\code{wind_decay}、\code{diffusion_length}、\code{global_bias} 和 \code{log_noise_scale} 共 6 个参数。观测由固定 seed 生成，不包含真实个人或敏感数据；代码和 metadata 明确说明该 synthetic model 不用于实际环境监管决策。
+
+likelihood 是唯一 canonical implementation：\code{examples/air_quality_likelihood.jl} 中的 Julia \code{AirQualityPE.air_quality_loglikelihood}。Julia \code{Dynesty.jl} runner 直接调用该 Julia likelihood；Python dynesty runner 从只读 \pathcode{../dynesty/py} 导入 Python dynesty，并通过 Python-Julia bridge 调用同一个 Julia likelihood，没有实现 Python duplicate likelihood。当前环境没有 \code{juliacall}，可用 fallback 为 PyJulia；由于本机 Python/PyCall 组合需要 \code{compiled_modules=false}，runner 在 metadata 中记录 \code{bridge_kind=pyjulia}、\code{bridge_compiled_modules=false}，并且必须先初始化 Julia bridge 再导入 \code{numpy}/\code{dynesty}，否则 PyJulia 会在加载 \code{PyCall} 时失败。
+
+本节结果来自当前可运行 smoke/scaled run，而不是完整 formal gate。配置为 \code{nlive=60}、\code{dlogz=0.8}、\code{queue_size=4}、Julia \code{--threads=31}、Python \code{nproc=4}，并设置 \code{OPENBLAS_NUM_THREADS=1}、\code{OMP_NUM_THREADS=1}、\code{MKL_NUM_THREADS=1}。likelihood calibration 选择 \code{work_repeats=64}，Julia direct median 为 \code{0.00908s}，满足 0.005--0.02 秒目标区间；Python bridge median 为 \code{0.00907s}。当前主机没有 \code{/usr/bin/time} 或 \code{/bin/time}，因此 \code{time_command_available=false}、\code{used_usr_bin_time=false}，CPU seconds 与 \code{time_percent_cpu} 字段不可用。Linux \code{/proc} process-tree monitor 仍记录了 RSS/PSS peak，采样间隔为 \code{0.2s}。
+
+\begin{table}[H]
+\centering
+\small
+\input{tables/air_quality_audit.tex}
+\caption{真实空气质量 PE benchmark 当前 evidence 审计。完整 formal gate 需要 \code{/usr/bin/time -v} 可用并重跑。}
+\label{tab:air-quality-audit}
+\end{table}
+
+\begin{landscape}
+\begin{table}[p]
+\centering
+\scriptsize
+\resizebox{\linewidth}{!}{\input{tables/air_quality_runs.tex}}
+\caption{真实空气质量 PE smoke run 结果。wall time 为 runner 内部墙钟；当前环境缺少 \code{/usr/bin/time -v}，因此 CPU utilization 为空。}
+\label{tab:air-quality-runs}
+\end{table}
+\end{landscape}
+
+\begin{figure}[H]
+\centering
+\includegraphics[width=0.95\textwidth]{figures/air_quality_repeat1_julia_vs_python.png}
+\caption{真实空气质量 PM2.5 PE posterior overlay。蓝色为 Dynesty.jl threaded direct Julia likelihood；橙色为 Python dynesty pool through Julia bridge；黑色 marker 为 synthetic truth。}
+\label{fig:air-quality-r1}
+\end{figure}
+
+当前 smoke 的 Julia run 为 \code{status=ok}，wall time \code{62.59s}，process-tree peak RSS/PSS 为 \code{869,800/758,360 KB}，\code{nsamples=2438}，\code{logz=-6949.9101}，\code{logzerr=0.5834}。Python run 为 \code{status=ok}，wall time \code{126.15s}，process-tree peak RSS/PSS 为 \code{3,373,948/2,455,557 KB}，\code{nsamples=2499}，\code{logz=-6950.5337}，\code{logzerr=0.6031}。Python wall time 包含 PyJulia main process 和 worker process initialization；主进程 bridge initialization metadata 记录为 \code{31.08s}。RSS/PSS 差异受 Python multiprocessing、每个 worker 独立 Julia runtime、共享页计数和当前 smoke 配置影响，不能外推为完整 31-worker formal memory 结论。
+
 \section{结论与剩余风险}
 
 本次常规 Julia package/test suite 全量通过，且 \code{test/runtests.jl} 覆盖了 parallel、examples、Python fixtures、plotting helpers 和 Aqua quality checks。benchmark runner include check 与 Python \code{py_compile} 也通过。formal benchmark 没有重跑，而是复用已有 \code{examples/output/parallel_cost_compare} 输出；审计确认该输出完整、一致，并且记录了 \code{/usr/bin/time -v} 与 process-tree RSS/PSS 指标。
 
-posterior overlay 图在 cheap、medium、heavy 三种 cost 的 3 次 repeat 上全部生成成功；代表图和附录列表显示 Julia/Python 后验叠加比较已经可用于可视化层面的一致性检查。性能方面，当前 benchmark 下 Python multiprocessing 在 cheap likelihood 上 wall time 更低；当 likelihood cost 提升到 medium/heavy 后，Julia threaded 的 wall time 中位数更低。内存方面，RSS 与 PSS 结论必须分开读取：Python multiprocessing RSS 受共享页重复计数影响，PSS 更适合与 Julia threaded 的 process-tree memory 对照。
+posterior overlay 图在 cheap、medium、heavy 三种 cost 的 3 次 repeat 上全部生成成功；代表图和附录列表显示 Julia/Python 后验叠加比较已经可用于可视化层面的一致性检查。新增空气质量 PE smoke 也已生成 Julia/Python posterior overlay，且 Python dynesty 确认通过 PyJulia bridge 调用同一个 Julia likelihood。性能方面，当前 parallel cost benchmark 下 Python multiprocessing 在 cheap likelihood 上 wall time 更低；当 likelihood cost 提升到 medium/heavy 后，Julia threaded 的 wall time 中位数更低。空气质量 smoke 中 Julia wall time 低于 Python PyJulia path，但该结论包含 bridge initialization 和小规模 nlive/queue settings，正式结论仍需 \code{/usr/bin/time -v} 恢复后重跑 formal benchmark。
 
-剩余风险包括：nested sampling 与 posterior visualization 受随机性和有限 repeat 数影响；性能结论依赖 AMD Ryzen 9 5950X、当前 Julia/Python/BLAS/线程设置和操作系统调度；Python multiprocessing memory accounting 的 RSS/PSS 解释依赖 Linux \code{/proc} 口径；扩展测试 flags 未在本次默认报告中打开；future benchmark 输出若更新，应重新运行 \code{docs/test_report/generate_assets.py} 并重新编译 PDF。
+剩余风险包括：nested sampling 与 posterior visualization 受随机性和有限 repeat 数影响；性能结论依赖 AMD Ryzen 9 5950X、当前 Julia/Python/BLAS/线程设置和操作系统调度；Python multiprocessing memory accounting 的 RSS/PSS 解释依赖 Linux \code{/proc} 口径；空气质量 formal gate 当前被缺失 \code{/usr/bin/time -v} 阻塞，尚未获得 31-worker formal 口径；PyJulia fallback 使用 \code{compiled_modules=false}，初始化开销和 worker memory 与 \code{juliacall} 或 \code{python-jl} 路径可能不同；扩展测试 flags 未在本次默认报告中打开；future benchmark 输出若更新，应重新运行 \code{docs/test_report/generate_assets.py} 并重新编译 PDF。
 
 \appendix
 \section{全部 Benchmark Run}
