@@ -1,2 +1,3 @@
 repeat,filename,method,status,julia_nsamples,python_nsamples,julia_logz,python_logz
-1,air_quality_repeat1_julia_vs_python.png,corner_overlay,ok,"2,438","2,499",-6949.91013,-6950.53368
+1,air_quality_repeat1_julia_vs_python.png,corner_overlay,ok,"11,488","11,312",-6950.73864,-6950.35180
+2,air_quality_repeat2_julia_vs_python.png,corner_overlay,ok,"11,447","11,252",-6950.59970,-6950.27003

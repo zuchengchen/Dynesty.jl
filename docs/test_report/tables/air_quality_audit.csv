@@ -1,8 +1,8 @@
 check,expected,observed,status
-mode,formal for final gate,smoke,degraded
-runs,Julia/Python ok,2/2 ok,ok
-plots,overlay ok,1/1 ok,ok
-overlay PNG,present,1 files,ok
-/usr/bin/time -v,available and used,"available=False, used=False",blocked
-direct likelihood median,0.005--0.02 s,0.00908,ok
+mode,formal for final gate,formal,ok
+runs,Julia/Python ok,4/4 ok,ok
+plots,overlay ok,2/2 ok,ok
+overlay PNG,present,2 files,ok
+/usr/bin/time -v,available and used,"available=True, used=True",ok
+direct likelihood median,0.005--0.02 s,0.00906,ok
 work repeats,recorded,64,ok

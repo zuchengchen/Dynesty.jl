@@ -1,18 +1,18 @@
 {
   "summary_json": "examples/output/air_quality_pe_compare/summary.json",
   "plot_index": "examples/output/air_quality_pe_compare/plot_index.csv",
-  "created_at": "2026-06-11T13:28:11.791",
-  "mode": "smoke",
-  "comparison_label": "Julia 31 threads direct Julia likelihood vs Python dynesty 4 worker processes through Julia bridge",
+  "created_at": "2026-06-11T13:55:58.312",
+  "mode": "formal",
+  "comparison_label": "Julia 31 threads direct Julia likelihood vs Python dynesty 31 worker processes through Julia bridge",
   "configuration": {
-    "nlive": 60,
-    "nproc": 4,
+    "nlive": 500,
+    "nproc": 31,
     "time_command": "/usr/bin/time",
-    "used_usr_bin_time": false,
+    "used_usr_bin_time": true,
     "threads": 31,
     "smoke_request": {
-      "nlive": 60,
-      "dlogz": 0.8,
+      "nlive": 100,
+      "dlogz": 0.5,
       "nproc": 4,
       "queue_size": 4
     },
@@ -24,11 +24,11 @@
       "nproc": 31,
       "queue_size": 31
     },
-    "time_command_available": false,
-    "dlogz": 0.8,
-    "queue_size": 4,
+    "time_command_available": true,
+    "dlogz": 0.08,
+    "queue_size": 31,
     "sleep_ms": 0,
-    "repeats": 1,
+    "repeats": 2,
     "python_start_method": "spawn",
     "work_repeats": 64,
     "memory_sample_interval_seconds": 0.2
@@ -109,10 +109,10 @@
     "preferred": "juliacall"
   },
   "calibration": {
-    "max_seconds": 0.009080257,
+    "max_seconds": 0.009107591,
     "status": "ok",
-    "min_seconds": 0.009031205,
-    "median_seconds": 0.009075608,
+    "min_seconds": 0.009036332,
+    "median_seconds": 0.009056906,
     "target_note": "Median measures Julia direct likelihood calls after warm-up.",
     "sleep_ms": 0,
     "dataset": {
@@ -181,43 +181,43 @@
   },
   "aggregates": [
     {
-      "median_direct_julia_likelihood_seconds": 0.008982445,
+      "median_direct_julia_likelihood_seconds": 0.009060102,
       "median_python_bridge_likelihood_seconds": null,
-      "successful_runs": 1,
-      "median_process_tree_peak_rss_kb": 869800,
+      "successful_runs": 2,
+      "median_process_tree_peak_rss_kb": 862612,
       "implementation": "julia",
-      "median_logz": -6949.910130278859,
-      "median_logzerr": 0.583444744390277,
-      "median_process_tree_peak_pss_kb": 758360,
-      "median_cpu_utilization": null,
-      "median_nsamples": 2438,
-      "median_wall_time_seconds": 62.58798408508301
+      "median_logz": -6950.669168682347,
+      "median_logzerr": 0.21803215496183048,
+      "median_process_tree_peak_pss_kb": 750040,
+      "median_cpu_utilization": 31.695433522578206,
+      "median_nsamples": 11467.5,
+      "median_wall_time_seconds": 25.104999999999997
     },
     {
       "median_direct_julia_likelihood_seconds": null,
-      "median_python_bridge_likelihood_seconds": 0.00907063,
-      "successful_runs": 1,
-      "median_process_tree_peak_rss_kb": 3373948,
+      "median_python_bridge_likelihood_seconds": 0.008970309999999999,
+      "successful_runs": 2,
+      "median_process_tree_peak_rss_kb": 23155828,
       "implementation": "python",
-      "median_logz": -6950.533679483877,
-      "median_logzerr": 0.6030693894816724,
-      "median_process_tree_peak_pss_kb": 2455557,
-      "median_cpu_utilization": null,
-      "median_nsamples": 2499,
-      "median_wall_time_seconds": 126.14863300323486
+      "median_logz": -6950.310919000131,
+      "median_logzerr": 0.21652691587514755,
+      "median_process_tree_peak_pss_kb": 16450745.5,
+      "median_cpu_utilization": 115.60581000301127,
+      "median_nsamples": 11282,
+      "median_wall_time_seconds": 31.81
     }
   ],
   "audit": {
-    "mode": "smoke",
-    "runs": 2,
-    "run_ok": 2,
-    "plots": 1,
-    "plot_ok": 1,
-    "plot_files_present": 1,
-    "used_usr_bin_time": false,
-    "time_command_available": false,
+    "mode": "formal",
+    "runs": 4,
+    "run_ok": 4,
+    "plots": 2,
+    "plot_ok": 2,
+    "plot_files_present": 2,
+    "used_usr_bin_time": true,
+    "time_command_available": true,
     "work_repeats": 64,
-    "direct_median_seconds": 0.009075608,
-    "comparison_label": "Julia 31 threads direct Julia likelihood vs Python dynesty 4 worker processes through Julia bridge"
+    "direct_median_seconds": 0.009056906,
+    "comparison_label": "Julia 31 threads direct Julia likelihood vs Python dynesty 31 worker processes through Julia bridge"
   }
 }

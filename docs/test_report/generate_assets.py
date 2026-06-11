@@ -142,7 +142,7 @@ def audit_summary(data: dict) -> dict:
 
 def write_csv(path: Path, rows: list[dict], fields: list[str]) -> None:
     with path.open("w", newline="", encoding="utf-8") as handle:
-        writer = csv.DictWriter(handle, fieldnames=fields)
+        writer = csv.DictWriter(handle, fieldnames=fields, lineterminator="\n")
         writer.writeheader()
         writer.writerows(rows)
 
@@ -370,12 +370,18 @@ def audit_air_quality_summary(data: dict) -> dict:
 
 
 def write_air_quality_audit_table(audit: dict) -> None:
+    mode_status = "ok" if audit["mode"] == "formal" else "degraded"
+    time_status = (
+        "ok"
+        if audit["time_command_available"] is True and audit["used_usr_bin_time"] is True
+        else "blocked"
+    )
     rows = [
-        {"check": "mode", "expected": "formal for final gate", "observed": audit["mode"], "status": "degraded"},
+        {"check": "mode", "expected": "formal for final gate", "observed": audit["mode"], "status": mode_status},
         {"check": "runs", "expected": "Julia/Python ok", "observed": f"{audit['run_ok']}/{audit['runs']} ok", "status": "ok"},
         {"check": "plots", "expected": "overlay ok", "observed": f"{audit['plot_ok']}/{audit['plots']} ok", "status": "ok"},
         {"check": "overlay PNG", "expected": "present", "observed": f"{audit['plot_files_present']} files", "status": "ok"},
-        {"check": "/usr/bin/time -v", "expected": "available and used", "observed": f"available={audit['time_command_available']}, used={audit['used_usr_bin_time']}", "status": "blocked"},
+        {"check": "/usr/bin/time -v", "expected": "available and used", "observed": f"available={audit['time_command_available']}, used={audit['used_usr_bin_time']}", "status": time_status},
         {"check": "direct likelihood median", "expected": "0.005--0.02 s", "observed": fmt_float(audit["direct_median_seconds"], 5), "status": "ok"},
         {"check": "work repeats", "expected": "recorded", "observed": audit["work_repeats"], "status": "ok"},
     ]

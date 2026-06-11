@@ -100,18 +100,21 @@ cd docs/test_report
 latexmk -xelatex -interaction=nonstopmode -halt-on-error main.tex
 ```
 
-空气质量 PE benchmark 的当前报告资产来自 smoke/scaled run，因为当前主机缺失 `/usr/bin/time` 和 `/bin/time`。恢复 GNU time 后，在仓库根目录运行完整或 scaled formal：
+空气质量 PE benchmark 的当前报告资产来自 documented scaled formal run。全局 GNU time 可用时，在仓库根目录运行：
 
 ```sh
 /usr/bin/time -v true
-julia --project=. benchmark/air_quality_pe_compare.jl --mode formal --resume
-```
-
-如果 Python bridge initialization 或 31 worker processes 过慢，可按 benchmark prompt 降级到 documented scaled formal，例如：
-
-```sh
 julia --project=. benchmark/air_quality_pe_compare.jl --mode formal \
   --repeats 2 --nlive 500 --dlogz 0.08 --queue-size 31 --nproc 31 --resume
+```
+
+当前主机全局缺失 `/usr/bin/time` 和 `/bin/time`；本次报告为了满足 runner 的 `/usr/bin/time -v` 口径，在临时 mount namespace 中把 `/tmp` 下编译的 GNU time 暴露为 `/usr/bin/time`，未修改系统 `/usr/bin`。实际运行命令为：
+
+```sh
+/tmp/dynesty-air-quality-time-src/with-gnu-time.sh \
+  julia --project=. benchmark/air_quality_pe_compare.jl --mode formal \
+  --repeats 2 --nlive 500 --dlogz 0.08 --queue-size 31 --nproc 31 \
+  --work-repeats 64 --calibration-trials 5
 ```
 
 当前环境使用 PyJulia fallback；metadata 会记录 `bridge_kind=pyjulia` 和 `bridge_compiled_modules=false`。不要把 Python runner 改成 Python duplicate likelihood。
@@ -124,7 +127,7 @@ julia --project=. benchmark/air_quality_pe_compare.jl --mode formal \
 - `python3 -m py_compile examples/air_quality_pe_python.py benchmark/air_quality_corner_overlay.py`
 - `julia --project=. -e 'include("examples/air_quality_likelihood.jl"); println("air quality likelihood ok")'`
 - `julia --project=. -e 'include("benchmark/air_quality_pe_compare.jl"); println("air quality runner ok")'`
-- `julia --project=. benchmark/air_quality_pe_compare.jl --mode smoke --allow-missing-usr-time --smoke-nproc 4 --smoke-queue-size 4 --smoke-nlive 60 --smoke-dlogz 0.8 --work-repeats 64 --calibration-trials 5`
+- `/tmp/dynesty-air-quality-time-src/with-gnu-time.sh julia --project=. benchmark/air_quality_pe_compare.jl --mode formal --repeats 2 --nlive 500 --dlogz 0.08 --queue-size 31 --nproc 31 --work-repeats 64 --calibration-trials 5`
 - formal benchmark audit via `docs/test_report/generate_assets.py`
 - `latexmk -xelatex -interaction=nonstopmode -halt-on-error main.tex`
 - `git diff --check`
