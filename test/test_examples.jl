@@ -8,6 +8,14 @@ const EXAMPLE_FILES = [
     "eggbox.jl",
     "gaussian_shells.jl",
     "high_dimensional_gaussian.jl",
+    "exponential_wave.jl",
+    "hyper_pyramid.jl",
+    "linear_regression.jl",
+    "loggamma.jl",
+    "noisy_likelihoods.jl",
+    "importance_reweighting.jl",
+    "correlated_normal_25d.jl",
+    "feature_overview.jl",
 ]
 
 @testset "Example scripts" begin
@@ -16,6 +24,8 @@ const EXAMPLE_FILES = [
         mod = Module(Symbol("Example_", replace(file, ".jl" => "")))
         Core.eval(mod, :(using Dynesty))
         Core.eval(mod, :(using Random))
+        Core.eval(mod, :(using LinearAlgebra))
+        Core.eval(mod, :(using SpecialFunctions))
         Base.include(mod, path)
         summary = Core.eval(mod, :(main()))
         @test summary isa NamedTuple

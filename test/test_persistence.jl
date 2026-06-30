@@ -1,4 +1,5 @@
 using Dynesty
+using Random
 using Test
 
 function persistence_fixture_results()
@@ -69,55 +70,76 @@ end
     end
 
     if get(ENV, "DYNESTY_RUN_EXTENDED_TESTS", "false") == "true"
-        try
-            @eval using HDF5
-            mktempdir() do dir
-                path = joinpath(dir, "history.h5")
-                ll = LogLikelihood(
-                    x -> -sum(abs2, x),
-                    2;
-                    history_filename=path,
-                    save_evaluation_history=true,
-                    save_every=2,
-                )
-                Dynesty.append_evaluation_history!(
-                    ll,
-                    [
-                        Dynesty.EvaluationHistoryItem([0.1, 0.2], [1.0, 2.0], -1.0),
-                        Dynesty.EvaluationHistoryItem([0.3, 0.4], [3.0, 4.0], -2.0),
-                        Dynesty.EvaluationHistoryItem([0.5, 0.6], [5.0, 6.0], -3.0),
-                    ],
-                )
-                @test ll.evaluation_history_counter == 3
-                @test isempty(ll.evaluation_history)
-                Dynesty.append_evaluation_history!(
-                    ll, [Dynesty.EvaluationHistoryItem([0.7, 0.8], [7.0, 8.0], -4.0)]
-                )
-                Dynesty.finalize_history!(ll)
-                @test ll.evaluation_history_counter == 4
-                HDF5.h5open(path, "r") do file
-                    @test read(file["evaluation_u"]) == [
-                        0.1 0.2
-                        0.3 0.4
-                        0.5 0.6
-                        0.7 0.8
-                    ]
-                    @test read(file["evaluation_v"]) == [
-                        1.0 2.0
-                        3.0 4.0
-                        5.0 6.0
-                        7.0 8.0
-                    ]
-                    @test read(file["evaluation_logl"]) == [-1.0, -2.0, -3.0, -4.0]
-                end
+        @eval using HDF5
+
+        mktempdir() do dir
+            path = joinpath(dir, "history.h5")
+            ll = LogLikelihood(
+                x -> -sum(abs2, x),
+                2;
+                history_filename=path,
+                save_evaluation_history=true,
+                save_every=2,
+            )
+            Dynesty.append_evaluation_history!(
+                ll,
+                [
+                    Dynesty.EvaluationHistoryItem([0.1, 0.2], [1.0, 2.0], -1.0),
+                    Dynesty.EvaluationHistoryItem([0.3, 0.4], [3.0, 4.0], -2.0),
+                    Dynesty.EvaluationHistoryItem([0.5, 0.6], [5.0, 6.0], -3.0),
+                ],
+            )
+            @test ll.evaluation_history_counter == 3
+            @test isempty(ll.evaluation_history)
+            Dynesty.append_evaluation_history!(
+                ll, [Dynesty.EvaluationHistoryItem([0.7, 0.8], [7.0, 8.0], -4.0)]
+            )
+            Dynesty.finalize_history!(ll)
+            @test ll.evaluation_history_counter == 4
+            HDF5.h5open(path, "r") do file
+                @test read(file["evaluation_u"]) == [
+                    0.1 0.2
+                    0.3 0.4
+                    0.5 0.6
+                    0.7 0.8
+                ]
+                @test read(file["evaluation_v"]) == [
+                    1.0 2.0
+                    3.0 4.0
+                    5.0 6.0
+                    7.0 8.0
+                ]
+                @test read(file["evaluation_logl"]) == [-1.0, -2.0, -3.0, -4.0]
             end
-        catch err
-            if err isa ArgumentError || err isa LoadError
-                @info "Skipping HDF5 evaluation-history extension test" exception = (
-                    err, catch_backtrace()
-                )
-            else
-                rethrow()
+        end
+
+        mktempdir() do dir
+            path = joinpath(dir, "sampler_history.h5")
+            ll = LogLikelihood(
+                x -> -0.5 * sum(abs2, x .- 0.5),
+                2;
+                history_filename=path,
+                save_evaluation_history=true,
+                save_every=5,
+            )
+            sampler = NestedSampler(
+                ll,
+                identity,
+                2;
+                nlive=14,
+                bound=:none,
+                sample=:unif,
+                rng=Random.MersenneTwister(6201),
+            )
+            run_nested!(sampler; maxiter=10, dlogz=nothing, add_live=false)
+            Dynesty.finalize_history!(ll)
+            HDF5.h5open(path, "r") do file
+                @test size(file["evaluation_u"], 1) == sampler.ncall
+                @test size(file["evaluation_v"], 1) == sampler.ncall
+                @test size(file["evaluation_logl"], 1) == sampler.ncall
+                @test size(file["evaluation_u"], 2) == 2
+                logl = read(file["evaluation_logl"])
+                @test all(isfinite, logl)
             end
         end
     end

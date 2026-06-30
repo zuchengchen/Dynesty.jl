@@ -343,3 +343,40 @@ end
     @test isnothing(dynamic_bound.live)
     @test_throws ArgumentError boundplot(dynamic_res, [1, 2]; idx=1, show_live=true)
 end
+
+if get(ENV, "DYNESTY_RUN_PLOT_TESTS", "false") == "true"
+    @testset "Optional plotting recipe smoke" begin
+        res = plotting_bound_results_fixture()
+        run_data = runplot(res; kde=true, nkde=12, lnz_truth=-0.3)
+        trace_data = traceplot(
+            res; dims=[1, 2], smooth=(4, 0.4), labels=["u1", "u2"], truths=[0.4, 0.5]
+        )
+        points_data = cornerpoints(res; dims=[1, 2, 3], thin=1, labels=["u1", "u2", "u3"])
+        corner_data = cornerplot(res; dims=[1, 2, 3], smooth=[4, 4, 4])
+        bound_data = boundplot(res, [1, 2]; idx=4, ndraws=16, rng=MersenneTwister(2401))
+        cbound_data = cornerbound(
+            res; idx=4, dims=[1, 2, 3], ndraws=16, rng=MersenneTwister(2402)
+        )
+
+        for data in (run_data, trace_data, points_data, corner_data, bound_data, cbound_data)
+            recipes = RecipesBase.apply_recipe(Dict{Symbol, Any}(), data)
+            @test !isempty(recipes)
+            @test all(recipe -> !isempty(recipe.args), recipes)
+        end
+
+        one_dim = Results(;
+            samples=res.samples[:, 1:1],
+            samples_u=res.samples_u[:, 1:1],
+            samples_id=res.samples_id,
+            logl=res.logl,
+            logvol=res.logvol,
+            logwt=res.logwt,
+            logz=res.logz,
+            logzerr=res.logzerr,
+            nlive=res.nlive,
+            niter=res.niter,
+        )
+        one_trace = traceplot(one_dim; kde=true, smooth=5)
+        @test !isempty(RecipesBase.apply_recipe(Dict{Symbol, Any}(), one_trace))
+    end
+end

@@ -19,6 +19,7 @@ makedocs(;
             "Dynamic Sampling" => "dynamic.md",
             "Errors" => "errors.md",
             "Plotting" => "plotting.md",
+            "FAQ" => "faq.md",
         ],
         "Manual" => [
             "Getting Started" => "manual/getting-started.md",
@@ -38,7 +39,10 @@ makedocs(;
         ],
         "Migration Notes" => [
             "Examples" => "examples.md",
+            "Notebook Coverage" => "notebook_coverage.md",
+            "Feature Overview" => "feature_overview.md",
             "Compatibility" => "compatibility.md",
+            "References" => "references.md",
             "Persistence" => "persistence.md",
             "Testing" => "testing.md",
             "Performance" => "performance.md",

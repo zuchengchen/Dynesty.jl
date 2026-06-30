@@ -13,6 +13,14 @@ requiring plotting packages in the default test suite.
 | `examples/eggbox.jl` | Multimodal eggbox likelihood smoke run. |
 | `examples/gaussian_shells.jl` | Two-shell likelihood smoke run. |
 | `examples/high_dimensional_gaussian.jl` | Higher-dimensional Gaussian smoke run. |
+| `examples/exponential_wave.jl` | Dynamic seven-parameter exponential-wave demo with periodic phase dimensions. |
+| `examples/hyper_pyramid.jl` | Hyper-pyramid likelihood demo. |
+| `examples/linear_regression.jl` | Straight-line regression with fractional scatter. |
+| `examples/loggamma.jl` | Log-gamma mixture likelihood. |
+| `examples/noisy_likelihoods.jl` | Dynamic nested sampling with a deterministic noisy-likelihood correction. |
+| `examples/importance_reweighting.jl` | Dynamic run reweighted from an independent Gaussian to a correlated Gaussian. |
+| `examples/correlated_normal_25d.jl` | 25-D correlated normal with random-slice proposals. |
+| `examples/feature_overview.jl` | Julia counterpart to the Python 3.0 feature overview: object samplers/bounds, proposal stats, and plotting data. |
 | `examples/pe_parallel_julia.jl` | Threaded Dynesty.jl side of a 4-D parameter-estimation comparison using full-chain proposal/evolve queue parallelism; writes weighted posterior CSV/JSON. |
 | `examples/pe_parallel_python.py` | Python dynesty `Pool` side of the same 4-D PE problem using `../dynesty/py`; writes weighted posterior CSV/JSON. |
 | `examples/pe_parallel_corner.py` | Overlays the Julia and Python weighted posteriors in one corner plot. |

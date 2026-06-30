@@ -76,6 +76,15 @@ realizations and is checked by Julia reproducibility/invariant coverage rather
 than same-seed Python trajectory equality.
 
 Plotting fixtures cover backend-neutral `check_span` and `_hist2d` numerical
-preparation. Full rendered plot smoke tests remain optional behind
-`DYNESTY_RUN_PLOT_TESTS=true` so Plots.jl is not part of the default test
-environment.
+preparation. `DYNESTY_RUN_PLOT_TESTS=true` activates additional RecipesBase
+recipe smoke tests for run, trace, corner, point-cloud, and bound plotting data
+without adding Plots.jl or Makie as core dependencies.
+
+`DYNESTY_RUN_SLOW_TESTS=true` activates targeted Python regression analogs,
+including repeated Rosenbrock posterior checks and the `1 / |x|` pathology
+matrix across proposal methods. Lightweight versions of these cases also run in
+the default suite through `test/test_regression_behaviors.jl`.
+
+`DYNESTY_RUN_EXTENDED_TESTS=true` activates HDF5 evaluation-history checks. HDF5
+is a weak dependency of the package and a test extra, so this path exercises
+the extension without making HDF5 a core dependency.

@@ -289,6 +289,27 @@ function _call_loglikelihood(loglikelihood, v; blob::Bool=false, copy_inputs::Bo
     return out
 end
 
+_history_enabled(loglikelihood) =
+    loglikelihood isa LogLikelihood && loglikelihood.save_evaluation_history
+
+function _append_loglike_history!(loglikelihood, items::AbstractVector{EvaluationHistoryItem})
+    _history_enabled(loglikelihood) || return loglikelihood
+    append_evaluation_history!(loglikelihood, items)
+    return loglikelihood
+end
+
+function _append_loglike_history!(loglikelihood, item::EvaluationHistoryItem)
+    _history_enabled(loglikelihood) || return loglikelihood
+    append_evaluation_history!(loglikelihood, [item])
+    return loglikelihood
+end
+
+function _finalize_loglike_history!(loglikelihood)
+    _history_enabled(loglikelihood) || return loglikelihood
+    finalize_history!(loglikelihood)
+    return loglikelihood
+end
+
 function _evaluate_live_point(
     prior_transform, loglikelihood, u, ndim::Int; blob::Bool=false, copy_inputs::Bool=false
 )
@@ -341,6 +362,9 @@ function _initialize_live_points(
                     )
                     cur_v[i, :] .= v
                     cur_logl[i] = logl
+                    _append_loglike_history!(
+                        loglikelihood, EvaluationHistoryItem(u, v, logl)
+                    )
                     blob && (cur_blobs[i] = out_blob)
                 end
             else
@@ -365,8 +389,12 @@ function _initialize_live_points(
                 backend_time = time() - backend_start
                 for item in mapped
                     i, v, logl, out_blob = item
+                    u = vec(cur_u[i, :])
                     cur_v[i, :] .= v
                     cur_logl[i] = logl
+                    _append_loglike_history!(
+                        loglikelihood, EvaluationHistoryItem(u, v, logl)
+                    )
                     blob && (cur_blobs[i] = out_blob)
                 end
             end
@@ -1090,6 +1118,7 @@ function _new_point!(sampler::NestedSampler, loglstar::Real)
         while true
             ret = _take_proposal_async!(sampler, loglstar)
             ncall_accum += ret.ncalls
+            _append_loglike_history!(sampler.loglikelihood, ret.evaluation_history)
             sampler.proposal_async_since_update += 1
             should_update = sampler.proposal_async_since_update >= _proposal_queue_size(sampler)
             _tune_internal_sampler!(sampler, ret; update=should_update)
@@ -1109,6 +1138,7 @@ function _new_point!(sampler::NestedSampler, loglstar::Real)
             _fill_proposal_queue!(sampler, loglstar)
             ret = popfirst!(sampler.proposal_queue)
             ncall_accum += ret.ncalls
+            _append_loglike_history!(sampler.loglikelihood, ret.evaluation_history)
             _tune_internal_sampler!(sampler, ret; update=isempty(sampler.proposal_queue))
             if isempty(sampler.proposal_queue)
                 _update_bound_if_needed!(
@@ -1124,6 +1154,7 @@ function _new_point!(sampler::NestedSampler, loglstar::Real)
         _update_bound_if_needed!(sampler, loglstar; ncall=sampler.ncall + ncall_accum)
         ret = _proposal_sample(sampler, loglstar)
         ncall_accum += ret.ncalls
+        _append_loglike_history!(sampler.loglikelihood, ret.evaluation_history)
         _tune_internal_sampler!(sampler, ret)
         if ret.logl > loglstar
             return ret, ncall_accum
@@ -1416,6 +1447,7 @@ function run_nested!(
     add_live && add_live_points!(sampler)
     _discard_proposal_async!(sampler)
     _recompute_integrals!(sampler)
+    _finalize_loglike_history!(sampler.loglikelihood)
     if !isnothing(checkpoint_file)
         checkpoint!(sampler, checkpoint_file)
     end

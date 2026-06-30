@@ -131,7 +131,9 @@ julia --project=. examples/dynamic_nested_sampling.jl
 ```
 
 Additional examples cover an eggbox likelihood, Gaussian shells, a
-high-dimensional Gaussian, and error handling.
+high-dimensional Gaussian, 25-D correlated normal, exponential wave,
+hyper-pyramid, linear regression, log-gamma, noisy likelihoods, importance
+reweighting, Python 3.0 feature-overview coverage, and error handling.
 
 ## Python Compatibility
 
@@ -173,8 +175,10 @@ DYNESTY_RUN_BENCHMARKS=true julia --project=benchmark -e 'using Pkg; Pkg.instant
 ```
 
 Extended tests are controlled by environment variables such as
-`DYNESTY_RUN_PLOT_TESTS=true`, `DYNESTY_RUN_DISTRIBUTED_TESTS=true`, and
-`DYNESTY_RUN_EXTENDED_TESTS=true`.
+`DYNESTY_RUN_SLOW_TESTS=true`, `DYNESTY_RUN_PLOT_TESTS=true`,
+`DYNESTY_RUN_DISTRIBUTED_TESTS=true`, and `DYNESTY_RUN_EXTENDED_TESTS=true`.
+`DYNESTY_RUN_EXTENDED_TESTS=true` exercises the HDF5 weak-dependency extension
+from the test environment without making HDF5 a core dependency.
 
 ## Citation
 
