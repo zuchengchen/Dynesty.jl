@@ -10,7 +10,7 @@ Python baseline: local read-only `../dynesty` checkout at
 Temporary Python verification copy:
 `/tmp/dynesty_jl_python_verify_20260630_223546/python_dynesty_copy`.
 
-Final migration-closure commit: `ab896fcdae2a1e15f36443999fd805178bf38d11`
+Migration-closure content commit: `7f4348703a4e497db932039cd40d45d002dacaec`
 
 ## Executive Conclusion
 
