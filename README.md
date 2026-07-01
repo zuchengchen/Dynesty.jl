@@ -14,7 +14,25 @@ Julia-native differences documented in [`docs/compatibility.md`](docs/compatibil
 
 ## Installation and Development
 
-Use the package from this repository with Julia 1.11 or newer:
+Install the repository version with Julia 1.11 or newer:
+
+```julia
+using Pkg
+Pkg.add(url="https://github.com/zuchengchen/Dynesty.jl")
+```
+
+The same installation can be run from Julia's `pkg>` mode:
+
+```julia-repl
+pkg> add https://github.com/zuchengchen/Dynesty.jl
+```
+
+The package name `Dynesty` is already registered in Julia's General registry
+for another repository, so `pkg> add Dynesty` does not install this repository
+version. Use the GitHub URL form above until this repository is registered
+under the intended package entry.
+
+For local development from a checkout, activate the repository environment:
 
 ```julia
 using Pkg
