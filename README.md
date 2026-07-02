@@ -153,6 +153,25 @@ high-dimensional Gaussian, 25-D correlated normal, exponential wave,
 hyper-pyramid, linear regression, log-gamma, noisy likelihoods, importance
 reweighting, Python 3.0 feature-overview coverage, and error handling.
 
+`examples/minimal_corner.jl` writes a corner plot with Plots.jl using the
+separate examples environment:
+
+```sh
+julia --project=examples -e 'using Pkg; Pkg.instantiate()'
+julia --project=examples examples/minimal_corner.jl
+```
+
+Run the same example with Julia threads and the sampler's threaded map backend:
+
+```sh
+julia --threads=4 --project=examples examples/minimal_corner.jl \
+    --parallel threads --queue-size 4
+```
+
+The companion notebook `examples/minimal_corner.ipynb` contains the same
+serial and threaded workflows. Start its Julia kernel with multiple threads to
+run the threaded notebook cell.
+
 ## Python Compatibility
 
 Default tests use committed JSON fixtures generated from the adjacent

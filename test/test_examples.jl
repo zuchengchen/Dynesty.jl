@@ -3,6 +3,7 @@ using Test
 const EXAMPLE_FILES = [
     "overview.jl",
     "dynamic_nested_sampling.jl",
+    "minimal_corner.jl",
     "errors.jl",
     "gaussian.jl",
     "eggbox.jl",

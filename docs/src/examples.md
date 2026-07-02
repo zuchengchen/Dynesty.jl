@@ -8,6 +8,7 @@ requiring plotting packages in the default test suite.
 | --- | --- |
 | `examples/overview.jl` | Static nested sampling overview with a two-dimensional Gaussian likelihood. |
 | `examples/dynamic_nested_sampling.jl` | Dynamic nested sampling with one adaptive batch. |
+| `examples/minimal_corner.jl` | Minimal complete posterior run with equal-weight samples and an optional Plots.jl corner plot. |
 | `examples/errors.jl` | Evidence-error post-processing with `jitter_run` and `resample_run`. |
 | `examples/gaussian.jl` | Gaussian posterior summary using posterior importance weights. |
 | `examples/eggbox.jl` | Multimodal eggbox likelihood smoke run. |
@@ -27,6 +28,28 @@ requiring plotting packages in the default test suite.
 
 Each example defines `main(; kwargs...)` and only prints a compact summary when
 executed directly as a script.
+
+`examples/minimal_corner.jl` is the shortest complete posterior-and-corner
+workflow. It uses the separate examples environment so Plots.jl remains an
+example dependency rather than a core package dependency:
+
+```bash
+julia --project=examples -e 'using Pkg; Pkg.instantiate()'
+julia --project=examples examples/minimal_corner.jl
+```
+
+Run the same example with Julia threads and the sampler's threaded map backend:
+
+```bash
+julia --threads=4 --project=examples examples/minimal_corner.jl \
+    --parallel threads --queue-size 4
+```
+
+The companion notebook `examples/minimal_corner.ipynb` contains the same
+serial and threaded workflows. Start its Julia kernel with multiple threads to
+run the threaded notebook cell. The script writes
+`examples/output/minimal_corner.png`; the threaded notebook cell writes
+`examples/output/minimal_corner_parallel.png`.
 
 The PE parallel comparison is intentionally kept out of the default
 `test/test_examples.jl` loop because the full run is longer and requires Python
